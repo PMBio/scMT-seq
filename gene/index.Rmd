@@ -1,0 +1,479 @@
+---
+title: CSCP3 gene-specific correlation
+date: 151014
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F, warning=F, message=F)
+```
+
+```{r, include=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(xtable)
+options(xtable.type='html')
+source('../lib/utils.R')
+```
+
+```{r}
+opts <- list()
+opts$data_file <- '../data/join/data.rds'
+opts$expr <- '../data/expr/data_proc/data_expr.rds'
+opts$expr_meta <- '../data/expr/data_proc/data_meta.rds'
+opts$met_mean <- '../data/met/mean/data_met.rds'
+opts$genes_file <- '../data/expr/data_raw/subpopulation_lif_genes9.csv'
+opts$filter_genes <- F
+opts$alpha <- 0.1
+opts$rnd_trials <- 0
+opts$min_sites <- 10
+opts$cache <- T
+opts$mean <- F
+opts$permute <- F
+opts$num_genes <- NULL
+opts$annos <- c()
+# opts$annos <- c('active_enhancer', 'H3K4me1', 'H3K4me1_Tet1', 'H3K27ac',
+#   'H3K27me3', 'cgi', 'prom', 'prom_cgi', 'prom_non_cgi', 'LMR', 'p300',
+#   'gene_body', 'Wu_Tet1')
+set.seed(0)
+```
+
+```{r}
+theme_pub <- function() {
+  p <- theme(
+    axis.text=element_text(size=rel(1.2), color='black'),
+    axis.title=element_text(size=rel(1.5)),
+    legend.position='top',
+    legend.text=element_text(size=rel(1.2)),
+    legend.title=element_text(size=rel(1.2)),
+    legend.key=element_rect(fill='transparent'),
+    panel.border=element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour="black", size=1),
+    axis.ticks.length = unit(.3, 'cm'),
+    axis.ticks.margin = unit(.3, 'cm')
+    )
+  return (p)
+}
+```
+
+Significance threshold: `r opts$alpha`
+
+```{r}
+cmp <- list()
+dat <- list()
+```
+
+```{r dat}
+read_genes <- function(f) {
+  d <- read.csv(f, sep=',', head=T) %>% tbl_df
+  names(d) <- c('ens_id', 'gene_id')
+  return (d)
+}
+
+dat$em <- readRDS(opts$data_file)
+dat$expr_meta <- readRDS(opts$expr_meta)
+dat$genes <- read_genes(opts$genes_file)
+if (opts$filter_genes) {
+  h <- as.vector(dat$genes$ens_id)
+  dat$em <- dat$em %>% filter(ens_id %in% h)
+}
+if (!is.null(opts$num_genes) && opts$num_genes > 0) {
+  h <- levels(dat$em$ens_id)
+  h <- h[sample(length(h))][1:opts$num_genes]
+  dat$em <- dat$em %>% filter(ens_id %in% h)
+}
+dat$em_meta <- dat$em %>% group_by(name, id_.x, id_.y) %>% top_n(1, expr) %>% ungroup %>%
+  select(-c(sample, met, expr, weight))
+```
+
+
+```{r add_mean, eval=opts$mean}
+dat$expr <- readRDS(opts$expr)
+dat$met_mean <- readRDS(opts$met_mean)
+d <- dat$expr %>% inner_join(dat$met_mean, by='sample') %>% mutate(name='mean')
+h <- names(dat$em)
+stopifnot(length(intersect(h, names(d))) == length(h))
+d <- d[,h]
+dat$em <- rbind.data.frame(dat$em, d) %>%
+  mutate(name=factor(name, levels=sort(as.vector(levels(name))))) %>% tbl_df
+```
+
+```{r rnd_correlation, eval=opts$rnd_trials > 0, cache=opts$cache}
+rnd <- list()
+for (i in 1:opts$rnd_trial) {
+  perm <- sample(length(levels(dat$em$sample)))
+  h <- dat$em %>% group_by(name, id_.x, id_.y) %>%
+    do(wtd_cor(.$met, .$expr[perm], weights=.$weight))
+  h$trial <- i
+  rnd[[i]] <- h
+}
+rnd <- do.call(rbind.data.frame, rnd)
+rnd$trial <- as.factor(rnd$trial)
+cmp$rnd <- rnd %>% tbl_df
+
+rnd <- list()
+for (n in as.vector(unique(cmp$rnd$name))) {
+  h <- cmp$rnd[cmp$rnd$name == n,]
+  rnd[[n]] <- h %>% select(r) %>%
+    filter(!is.na(r)) %>% mutate(r=abs(r)) %>% unlist
+}
+cmp$rnd_r <- rnd
+
+saveRDS(cmp$rnd, 'r_rnd.rds')
+```
+
+```{r cor, cache=opts$cache}
+n <- length(levels(dat$em$sample))
+if (opts$permute) {
+  perm <- sample(n)
+} else {
+  perm <- 1:n
+}
+cmp$r <- dat$em %>% group_by(name, id_.x, id_.y) %>%
+  do(wtd_cor(.$expr[perm], .$met, .$weight)) %>% ungroup 
+```
+
+```{r}
+p_adjust_rnd <- function(r, name) {
+  p <- sapply(1:length(r), function(i) {
+    r0 <- cmp$rnd_r[[name[i]]]
+    return (sum(r0 >= abs(r[i])) / length(r0))
+  })
+  return (p)
+}
+```
+
+```{r}
+d <- cmp$r
+h <- d %>% group_by(name) %>% summarise(n=n()) %>%
+  filter(n >= opts$min_sites) %>% select(name) %>% unlist
+d <- d %>% filter(name %in% h) %>% mutate(name=droplevels(name))
+
+d <- d %>% group_by(name) %>%
+  mutate(p_fdr=p.adjust(p, method='fdr')) %>% ungroup
+
+if (opts$rnd_trials > 0) {
+  d$p_rnd <- p_adjust_rnd(d$r, as.vector(d$name))
+} else {
+  d$p_rnd <- d$p_fdr
+}
+
+d$p_adj <- d$p_fdr
+
+h <- nrow(d)
+d <- d %>% inner_join(dat$expr_meta, by=c('id_.x'='id_'))
+stopifnot(h == nrow(d))
+
+d <- d %>% ungroup %>%
+  mutate(name=factor(name, levels=rev(levels(name)))) %>%
+  arrange(desc(name), p_adj, desc(abs(r)))
+
+h <- c('name', 'id_.x', 'id_.y', 'r', 'p', 'p_adj', 'p_fdr', 'p_rnd', 'ens_id',
+  'gene_id', 'chromo', 'start', 'end', 'strand')
+h <- c(h, setdiff(names(d), h))
+d <- d[,h]
+
+saveRDS(d, 'r.rds')
+cmp$r <- d
+```
+
+
+
+
+
+## Statistics
+
+
+```{r}
+cmp$rs <- cmp$r %>% group_by(name) %>% summarise(
+  r_mean=mean(r, na.rm=T), n=n(), sig=sum(p_adj <= opts$alpha),
+  sig_pos=sum(p_adj <= opts$alpha & r > 0),
+  sig_neg=sum(p_adj <= opts$alpha & r < 0)
+  ) %>% ungroup %>% arrange(desc(name))
+```
+
+```{r results='asis'}
+print(xtable(cmp$rs, digits=2))
+```
+
+```{r fig.height=8}
+d <- cmp$r %>% group_by(name) %>% summarise(n=n())
+ggplot(d, aes(x=name, y=n, fill=name)) + geom_bar(stat='identity') +
+  xlab('') + ylab('# sites') + coord_flip() + guides(fill=F) +
+  theme_pub()
+```
+
+
+
+
+## All sites
+
+
+```{r}
+a <- dat$genes %>% mutate(pluri=T) %>% select(-gene_id)
+ra <- cmp$r %>% left_join(a, by='ens_id')
+ra[is.na(ra$pluri),]$pluri <- F
+cmp$ra <- ra
+cmp$ras <- cmp$ra
+if (length(opts$annos)) {
+  cmp$ras <- cmp$ras %>% filter(name %in% opts$annos) %>%
+    mutate(name=factor(name, levels=rev(opts$annos)))
+}
+```
+
+```{r fig.height=8}
+p <- ggplot(cmp$ras, aes(x=name, y=r, fill=name)) +
+  geom_hline(yintercept=0, color='darkgrey') +
+  geom_boxplot() +
+  theme_pub() +
+  xlab('') + ylab('\nPearson correlation') + coord_flip() + guides(fill=F)
+print(p)
+```
+
+```{r fig.width=10, fig.height=14}
+d <- cmp$ras
+d <- d %>% mutate(
+  pluri=factor(pluri, levels=c(F, T), labels=c('no', 'yes')),
+  name=factor(name, levels=rev(levels(name)))
+  )
+h <- d %>% group_by(name) %>% top_n(5, 1-p_adj) %>% ungroup %>% select(name, id_.x, id_.y) %>% mutate(topn=T)
+d <- d %>% left_join(h, by=c('name', 'id_.x', 'id_.y'))
+d[is.na(d$topn), 'topn'] <- F
+ds <- d %>% group_by(name) %>% summarise(r=mean(r, na.rm=T)) %>% ungroup %>%
+  arrange(abs(r)) %>% mutate(name=factor(name, levels=name))
+# d <- d %>% mutate(name=factor(name, rev(levels(ds$name))))
+
+p <- ggplot(d, aes(x=r, y=-log10(p_adj), size=-log10(p_adj))) +
+  geom_vline(xintercept=0, linetype='dashed', color='darkgrey') +
+  geom_vline(data=ds, aes(xintercept=r), color='orange') +
+  geom_hline(yintercept=-log10(opts$alpha), color='blue') +
+  facet_wrap(~name, ncol=3) +
+  scale_color_manual(values=c('no'='black', 'yes'='red3')) +
+  geom_point(aes(color=pluri)) +
+  geom_point(data=(d %>% filter(pluri=='yes')), color='red') +
+  geom_text(data=(d %>% filter(topn == T | (pluri == 'yes' & p_adj <= opts$alpha))), aes(label=gene_id, color=pluri),
+    vjust=-0.0, hjust=-0.4) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background=element_rect(fill='transparent'),
+    panel.margin = unit(1, "lines")
+    ) +
+  guides(color=F, size=F) +
+  ylim(0, 3.9)
+print(p)
+```
+
+```{r results='asis'}
+h <- d %>% group_by(name) %>% top_n(3, 1 - p_adj) %>% ungroup %>% filter(p_adj <= opts$alpha) %>% select(name, ens_id, gene_id, r, p_adj, pluri) %>% as.data.frame
+print(xtable(h, digits=2))
+```
+
+```{r fisher_test, eval=F}
+h <- as.vector(dat$genes$ens_id)
+d <- cmp$r %>% group_by(id_.x) %>%
+  summarise(sig=sum(p_adj <= opts$alpha) > 0) %>% ungroup %>%
+  inner_join(select(dat$expr_meta, id_, ens_id), by=c('id_.x'='id_')) %>%
+  mutate(pluri=(ens_id %in% h))
+h <- as.matrix(table(d$pluri, d$sig))
+fisher.test(h)
+```
+
+
+## Significant sites
+
+```{r fig.height=7}
+d <- cmp$ras
+d <- d %>% group_by(name) %>%
+  summarise(
+    n=sum(p_adj <= opts$alpha),
+    pos=sum(p_adj <= opts$alpha & r > 0),
+    neg=sum(p_adj <= opts$alpha & r < 0)) %>%
+  ungroup# %>% arrange(n)
+h <- d %>% select(-n) %>% gather(sign, n, -name) %>% 
+    mutate(
+      sign=factor(sign, levels=c('pos', 'neg'),
+        labels=c('positive', 'negative')),
+      name=factor(name, levels=as.vector(d$name))
+      )
+p <- ggplot(h, aes(x=name, y=n, fill=sign)) +
+  geom_bar(stat='identity', position=position_dodge()) +
+  scale_fill_manual(values=c('positive'='firebrick2', 'negative'='royalblue')) +
+  ylab('\nNumber of significant sites') + coord_flip() +
+  guides(fill=guide_legend(title='Correlation')) +
+  theme_pub() +
+  theme(
+    axis.title.y=element_blank()
+    )
+print(p)
+```
+
+
+```{r fig.height=7}
+d <- cmp$ras
+d <- d %>% group_by(name) %>%
+  summarise(
+    positive=sum(p_adj <= opts$alpha & r > 0) / n(),
+    negative=sum(p_adj <= opts$alpha & r < 0) / n()) %>% gather(sign, n, -name)
+ggplot(d, aes(x=name, y=n, fill=sign)) +
+  geom_bar(stat='identity', position=position_dodge()) +
+  scale_fill_manual(values=c('positive'='firebrick2', 'negative'='royalblue')) +
+  xlab('') + ylab('% significant sites') + coord_flip() +
+  theme_pub()
+```
+
+```{r fig.height=7}
+d <- cmp$ras
+d <- d %>% filter(p_adj <= opts$alpha) %>%
+  mutate(ra=abs(r),
+    sign=factor(r>0, levels=c(T, F), labels=c('positive', 'negative')),
+    name=droplevels(name))
+ggplot(d, aes(x=name, y=ra, fill=sign)) + geom_boxplot() +
+  scale_fill_manual(values=c('positive'='firebrick2', 'negative'='royalblue')) +
+  xlab('') + ylab('Correlation coefficient') + coord_flip() +
+  theme_pub()
+```
+
+
+
+## Visualization
+
+```{r}
+d <- dat$em %>% group_by(name, id_.x, id_.y) %>%
+  summarise(expr_mean=mean(expr), expr_var=var(expr),
+    met_mean=weighted.mean(met, weight, na.rm=T),
+    met_var=wtd.var(met, weight, na.rm=T)
+    ) %>% ungroup
+dd <- cmp$r %>% inner_join(d, by=c('name', 'id_.x', 'id_.y'))
+```
+
+```{r}
+select_sites <- function(name_, n_=8) {
+  d <- cmp$r %>% filter(name == name_) %>%
+    group_by(id_.x) %>% top_n(1, abs(r)) %>% ungroup %>%
+    arrange(desc(abs(r))) %>% head(n_)
+  dd <- dat$em %>% semi_join(d, by=c('name', 'id_.x', 'id_.y')) %>%
+    mutate(sample_short=gsub('^CSC\\d+_', '', sample),
+      gene_id=factor(gene_id, levels=as.vector(d$gene_id))
+      )
+  return (list(r=d, em=dd))
+}
+
+plot_sites <- function(d, ncol_=4) {
+  p <- ggplot(d, aes(x=met, y=expr)) +
+    stat_smooth(method=lm, color='black', aes(weight=weight)) +
+    geom_point(aes(color=sample, size=weight), alpha=0.7) +
+    facet_wrap(~gene_id, ncol=ncol_) +
+    guides(color=F, size=F)
+  print(p)
+}
+
+tab_data <- function(d) {
+  return (d %>% select(gene_id, ens_id, r, p, p_adj))
+}
+```
+
+```{r}
+opts_chunk$set(fig.width=10, fig.height=6)
+```
+
+### Exons
+
+```{r}
+d <- select_sites('exon')
+plot_sites(d$em)
+```
+
+```{r results='asis'}
+print(xtable(tab_data(d$r), digits=2))
+```
+
+
+### H3K27ac
+
+```{r}
+d <- select_sites('H3K27ac')
+plot_sites(d$em)
+```
+
+```{r results='asis'}
+print(xtable(tab_data(d$r), digits=2))
+```
+
+
+### H3K4me1
+
+```{r}
+d <- select_sites('H3K4me1')
+plot_sites(d$em)
+```
+
+```{r results='asis'}
+print(xtable(tab_data(d$r), digits=2))
+```
+
+
+### LMR
+
+```{r}
+d <- select_sites('LMR')
+plot_sites(d$em)
+```
+
+```{r results='asis'}
+print(xtable(tab_data(d$r), digits=2))
+```
+
+### p300
+
+```{r}
+d <- select_sites('p300')
+plot_sites(d$em)
+```
+
+```{r results='asis'}
+print(xtable(tab_data(d$r), digits=2))
+```
+
+### Non-CGI promotor
+
+```{r}
+d <- select_sites('prom_non_cgi')
+plot_sites(d$em)
+```
+
+```{r results='asis'}
+print(xtable(tab_data(d$r), digits=2))
+```
+
+### Wu_Tet1 
+
+```{r}
+d <- select_sites('Wu_Tet1')
+plot_sites(d$em)
+```
+
+```{r results='asis'}
+print(xtable(tab_data(d$r), digits=2))
+```
+
+
+
+
+
+
+
+```{r eval=F}
+# TODO: why is list not unique?
+h <- cmp$ra %>% filter(p_adj < 0.3) %>% arrange(desc(abs(r))) %>%
+  select(anno=name, ens_id, gene_id, strand, r, p_adj, chromo.x, start.x, end.x,
+  chromo.y, start.y, end.y)
+write.table(h, file='r.csv', sep='\t', row.names=F, quote=F)
+```

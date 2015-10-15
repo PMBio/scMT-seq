@@ -1,0 +1,32 @@
+*~
+.*.swp
+/tmp/
+*.DS_Store
+
+# R
+.Rhistory
+.RData
+.Rapp.history
+.Rproj.user
+*.Rproj
+*.rds
+
+# Python
+*.py[cod]
+*.so
+*.cfg
+*.orig
+*.log
+*.pot
+__pycache__/*
+.cache/*
+*_cache/
+
+index_*
+*.csv
+*.png
+*.pptx
+*.ipynb
+
+/data/
+

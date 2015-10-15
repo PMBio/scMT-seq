@@ -1,0 +1,196 @@
+---
+title: Sample-specific correlation for all genes
+date: 151015
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F, fig.width=10, warning=F, message=F)
+```
+
+```{r, include=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(xtable)
+options(xtable.type='html')
+source('../lib/utils.R')
+```
+
+```{r}
+opts <- list()
+opts$data_file <- '../data/join/data.rds'
+opts$expr <- '../data/expr/data_proc/data_expr.rds'
+opts$genes_file <- NA
+# opts$genes_file <- '../data/expr/data_raw/subpopulation_lif_genes9.csv'
+opts$samples_file <- '../data/samples/samples_stats.csv'
+opts$cache <- F
+opts$alpha <- 0.1
+```
+
+```{r}
+theme_pub <- function() {
+  p <- theme(
+    axis.text=element_text(size=rel(1.2), color='black'),
+    axis.title=element_text(size=rel(1.5)),
+    legend.position='top',
+    legend.text=element_text(size=rel(1.2)),
+    legend.title=element_text(size=rel(1.2)),
+    legend.key=element_rect(fill='transparent'),
+    panel.border=element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour="black", size=1),
+    axis.ticks.length = unit(.3, 'cm'),
+    axis.ticks.margin = unit(.3, 'cm')
+    )
+  return (p)
+}
+```
+
+```{r}
+cmp <- list()
+dat <- list()
+```
+
+```{r data}
+dat$em <- readRDS(opts$data_file)
+if (!is.na(opts$genes_file)) {
+  dat$genes <- read.csv(opts$genes_file, sep=',', head=T) %>% tbl_df
+  names(dat$genes) <- c('ens_id', 'gene_id')
+  h <- as.vector(dat$genes$ens_id)
+  dat$em <- dat$em %>% filter(ens_id %in% h)
+}
+```
+
+```{r}
+dat$samples <- read.csv(opts$samples_file, sep='\t', head=T) %>%
+  mutate(sample=id, sample_short=sub('^[^_]+_', '', sample)) %>% tbl_df
+```
+
+## Bulk correlation
+
+```{r}
+dat$emb <- dat$em %>% group_by(name, id_.x, id_.y) %>%
+  summarise(expr=mean(expr, na.rm=T), met=weighted.mean(met, weight, na.rm=T)) %>%
+  ungroup
+cmp$rb <- dat$emb %>% group_by(name) %>% do(wtd_cor(.$met, .$expr)) %>%
+  ungroup %>% arrange(desc(abs(r))) %>%
+  mutate(name=factor(name, levels=rev(name)), sig=(p <= opts$alpha))
+```
+
+
+```{r results='asis'}
+h <- cmp$rb %>% select(name, n, r, p, sig) %>% as.data.frame %>% arrange(as.vector(name))
+print(xtable(h, digits=2))
+```
+
+```{r fig.width=10, fig.height=8}
+ggplot(cmp$rb, aes(x=name, y=r, fill=-log10(p))) + geom_bar(stat='identity') +
+  xlab('') + ylab('r') + coord_flip() + theme_pub()
+```
+
+```{r fig.height=8}
+d <- dat$emb
+d$name <- factor(d$name, levels=rev(levels(cmp$rb$name)))
+ggplot(d, aes(x=met, y=expr)) +
+  geom_point(size=0.3) +
+  stat_density2d(color='darkgrey') +
+  stat_smooth(method=lm, color='blue') +
+  facet_wrap(~name) + theme_pub()
+```
+
+
+## Sample-specific correlation
+
+```{r cor, cache=opts$cache}
+cmp$r <- dat$em %>% group_by(name, sample) %>%
+  do(wtd_cor(.$expr, .$met, .$weight)) %>% ungroup %>%
+  group_by(name) %>% mutate(p_adj=p.adjust(p, method='fdr')) %>% ungroup
+```
+
+```{r}
+cmp$r <- cmp$r %>% mutate(name=factor(name, levels=rev(levels(name)))) %>%
+  inner_join(dat$samples, by='sample')
+```
+
+```{r}
+saveRDS(cmp$r, file='r.rds')
+```
+
+```{r eval=T}
+d <- cmp$r %>% select(anno=name, sample, r, p, p_adj, cpg_cov=cov, mean_met=CpG.rate) %>%
+  arrange(as.vector(anno))
+write.table(d, file='correlations.csv', quote=F, row=F, sep=',')
+```
+
+```{r}
+cmp$rs <- cmp$r %>% group_by(name) %>%
+  summarise(
+    n=mean(n),
+    r=mean(r),
+    sig_pos=sum(p_adj <= opts$alpha & r > 0),
+    sig_neg=sum(p_adj <= opts$alpha & r < 0)
+  ) %>% arrange(as.vector(name))
+```
+
+```{r results='asis'}
+xtable(as.data.frame(cmp$rs), digits=2)
+```
+
+```{r fig.height=10}
+d <- cmp$r %>% group_by(name) %>% summarise(r_mean=mean(r, na.rm=T))
+d <- cmp$r %>% inner_join(d, by='name')
+
+p <- ggplot(d, aes(x=name, y=r)) +
+  geom_hline(yintercept=0, color='darkgrey', linetype='dashed') +
+  geom_boxplot(aes(fill=r_mean), alpha=0.4, outlier.size=0) +
+  geom_point(position=position_jitter(w=0.1), size=1) +
+  scale_fill_gradient2(low='darkblue', mid='white', high='darkred', midpoint=0.0) +
+  xlab('') + ylab('r') + coord_flip() +
+  theme_pub() +
+  theme(legend.position='bottom') + guides(color=guide_legend(ncol=5))
+print(p)
+```
+
+
+## R versus coverage
+
+```{r fig.height=12}
+d <- cmp$r %>% mutate(name=factor(name, levels=rev(levels(name))))
+p <- ggplot(d, aes(x=cov, y=r)) + 
+  geom_hline(yintercept=0, color='darkgrey') +
+  geom_point(size=2) +
+  guides(color=guide_legend(title='Method ')) +
+  facet_wrap(~name, ncol=3) + theme(legend.position='bottom') +
+  xlab('\nCpG coverage') + ylab('Pearson correlation\n') +
+  theme_pub()
+print(p)
+```
+
+```{r eval=F}
+ggsave('r_cov.pdf', p, width=10, height=15)
+```
+
+## R versus mean methylation
+
+
+```{r fig.height=12}
+d <- cmp$r %>% mutate(name=factor(name, levels=rev(levels(name))))
+p <- ggplot(d, aes(x=CpG.rate, y=r)) + 
+  geom_hline(yintercept=0, color='darkgrey') +
+  geom_point(size=2) +
+  guides(color=guide_legend(title='Method ')) +
+  facet_wrap(~name, ncol=3) + theme(legend.position='bottom') +
+  xlab('\nMean CpG methylation rate') + ylab('Pearson correlation\n') +
+  theme_pub()
+print(p)
+```
+
+```{r eval=F}
+ggsave('r_mean.pdf', p, width=10, height=15)
+```
