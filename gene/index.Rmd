@@ -34,7 +34,7 @@ opts$min_sites <- 10
 opts$cache <- T
 opts$mean <- F
 opts$permute <- F
-opts$num_genes <- NULL
+opts$num_genes <- 0
 opts$annos <- c()
 # opts$annos <- c('active_enhancer', 'H3K4me1', 'H3K4me1_Tet1', 'H3K27ac',
 #   'H3K27me3', 'cgi', 'prom', 'prom_cgi', 'prom_non_cgi', 'LMR', 'p300',
@@ -89,8 +89,13 @@ if (!is.null(opts$num_genes) && opts$num_genes > 0) {
   h <- h[sample(length(h))][1:opts$num_genes]
   dat$em <- dat$em %>% filter(ens_id %in% h)
 }
-dat$em_meta <- dat$em %>% group_by(name, id_.x, id_.y) %>% top_n(1, expr) %>% ungroup %>%
-  select(-c(sample, met, expr, weight))
+
+h <- dat$em %>% group_by(name, id_.x, id_.y) %>% top_n(1, expr) %>% ungroup %>%
+  select(id_.x, id_.y, name, ens_id, gene_id, chromo=chromo.x, start.x, end.x, start.y, end.y, strand)
+a <- dat$genes %>% mutate(pluri=T) %>% select(-gene_id)
+h <- h %>% left_join(a, by='ens_id')
+h[is.na(h$pluri),]$pluri <- F
+dat$em_meta <- h
 ```
 
 
@@ -105,7 +110,7 @@ dat$em <- rbind.data.frame(dat$em, d) %>%
   mutate(name=factor(name, levels=sort(as.vector(levels(name))))) %>% tbl_df
 ```
 
-```{r rnd_correlation, eval=opts$rnd_trials > 0, cache=opts$cache}
+```{r cor_rnd, eval=opts$rnd_trials > 0, cache=opts$cache}
 rnd <- list()
 for (i in 1:opts$rnd_trial) {
   perm <- sample(length(levels(dat$em$sample)))
@@ -137,7 +142,9 @@ if (opts$permute) {
   perm <- 1:n
 }
 cmp$r <- dat$em %>% group_by(name, id_.x, id_.y) %>%
-  do(wtd_cor(.$expr[perm], .$met, .$weight)) %>% ungroup 
+  do(wtd_cor(.$expr[perm], .$met, .$weight)) %>% ungroup
+
+saveRDS(cmp$r, 'r_raw.rds')
 ```
 
 ```{r}
@@ -168,22 +175,17 @@ if (opts$rnd_trials > 0) {
 d$p_adj <- d$p_fdr
 
 h <- nrow(d)
-d <- d %>% inner_join(dat$expr_meta, by=c('id_.x'='id_'))
+d <- d %>% inner_join(dat$em_meta, by=c('name', 'id_.x', 'id_.y'))
 stopifnot(h == nrow(d))
 
 d <- d %>% ungroup %>%
-  mutate(name=factor(name, levels=rev(levels(name)))) %>%
+  mutate(name=factor(name)) %>%
+  mutate(name=factor(name, levels=rev(sort(levels(name))))) %>%
   arrange(desc(name), p_adj, desc(abs(r)))
-
-h <- c('name', 'id_.x', 'id_.y', 'r', 'p', 'p_adj', 'p_fdr', 'p_rnd', 'ens_id',
-  'gene_id', 'chromo', 'start', 'end', 'strand')
-h <- c(h, setdiff(names(d), h))
-d <- d[,h]
 
 saveRDS(d, 'r.rds')
 cmp$r <- d
 ```
-
 
 
 
@@ -213,23 +215,21 @@ ggplot(d, aes(x=name, y=n, fill=name)) + geom_bar(stat='identity') +
 
 
 
+
 ## All sites
 
 
 ```{r}
-a <- dat$genes %>% mutate(pluri=T) %>% select(-gene_id)
-ra <- cmp$r %>% left_join(a, by='ens_id')
-ra[is.na(ra$pluri),]$pluri <- F
-cmp$ra <- ra
-cmp$ras <- cmp$ra
+
+cmp$rs <- cmp$r
 if (length(opts$annos)) {
-  cmp$ras <- cmp$ras %>% filter(name %in% opts$annos) %>%
+  cmp$rs <- cmp$rs %>% filter(name %in% opts$annos) %>%
     mutate(name=factor(name, levels=rev(opts$annos)))
 }
 ```
 
 ```{r fig.height=8}
-p <- ggplot(cmp$ras, aes(x=name, y=r, fill=name)) +
+p <- ggplot(cmp$rs, aes(x=name, y=r, fill=name)) +
   geom_hline(yintercept=0, color='darkgrey') +
   geom_boxplot() +
   theme_pub() +
@@ -238,7 +238,7 @@ print(p)
 ```
 
 ```{r fig.width=10, fig.height=14}
-d <- cmp$ras
+d <- cmp$rs
 d <- d %>% mutate(
   pluri=factor(pluri, levels=c(F, T), labels=c('no', 'yes')),
   name=factor(name, levels=rev(levels(name)))
@@ -277,27 +277,35 @@ print(xtable(h, digits=2))
 ```
 
 ```{r fisher_test, eval=F}
-h <- as.vector(dat$genes$ens_id)
+fisher_test <- function(a, b) {
+  # table: rows == # significant genes, columns == # pluri factors
+  h <- fisher.test(as.matrix(table(a, b)))
+  return (data.frame(p.value=h$p.value))
+}
+
+# Are genes enriched for pluri factors?
 d <- cmp$r %>% group_by(id_.x) %>%
-  summarise(sig=sum(p_adj <= opts$alpha) > 0) %>% ungroup %>%
-  inner_join(select(dat$expr_meta, id_, ens_id), by=c('id_.x'='id_')) %>%
-  mutate(pluri=(ens_id %in% h))
-h <- as.matrix(table(d$pluri, d$sig))
-fisher.test(h)
+  summarise(sig=sum(p_adj <= opts$alpha) > 0, pluri=sum(pluri) > 0)
+h <- fisher_test(d$sig, d$pluri)
+
+# Are genes in context enriched for pluri factors?
+d <- cmp$r %>% group_by(name, id_.x) %>%
+  summarise(sig=sum(p_adj <= opts$alpha) > 0, pluri=sum(pluri) > 0)
+h <- d %>% group_by(name) %>% do(fisher_test(.$sig, .$pluri))
 ```
 
 
 ## Significant sites
 
 ```{r fig.height=7}
-d <- cmp$ras
+d <- cmp$rs
 d <- d %>% group_by(name) %>%
   summarise(
     n=sum(p_adj <= opts$alpha),
     pos=sum(p_adj <= opts$alpha & r > 0),
     neg=sum(p_adj <= opts$alpha & r < 0)) %>%
   ungroup# %>% arrange(n)
-h <- d %>% select(-n) %>% gather(sign, n, -name) %>% 
+h <- d %>% select(-n) %>% gather(sign, n, -name) %>%
     mutate(
       sign=factor(sign, levels=c('pos', 'neg'),
         labels=c('positive', 'negative')),
@@ -317,7 +325,7 @@ print(p)
 
 
 ```{r fig.height=7}
-d <- cmp$ras
+d <- cmp$rs
 d <- d %>% group_by(name) %>%
   summarise(
     positive=sum(p_adj <= opts$alpha & r > 0) / n(),
@@ -330,7 +338,7 @@ ggplot(d, aes(x=name, y=n, fill=sign)) +
 ```
 
 ```{r fig.height=7}
-d <- cmp$ras
+d <- cmp$rs
 d <- d %>% filter(p_adj <= opts$alpha) %>%
   mutate(ra=abs(r),
     sign=factor(r>0, levels=c(T, F), labels=c('positive', 'negative')),
@@ -453,7 +461,7 @@ plot_sites(d$em)
 print(xtable(tab_data(d$r), digits=2))
 ```
 
-### Wu_Tet1 
+### Wu_Tet1
 
 ```{r}
 d <- select_sites('Wu_Tet1')
@@ -470,10 +478,10 @@ print(xtable(tab_data(d$r), digits=2))
 
 
 
-```{r eval=F}
-# TODO: why is list not unique?
-h <- cmp$ra %>% filter(p_adj < 0.3) %>% arrange(desc(abs(r))) %>%
-  select(anno=name, ens_id, gene_id, strand, r, p_adj, chromo.x, start.x, end.x,
-  chromo.y, start.y, end.y)
+```{r eval=T}
+h <- cmp$r %>%
+  select(-id_.x, -id_.y) %>%
+  arrange(as.vector(name), desc(abs(r)))
+
 write.table(h, file='r.csv', sep='\t', row.names=F, quote=F)
 ```

@@ -1,6 +1,6 @@
 ---
 title: Sample-specific correlation for all genes
-date: 151015
+date: 151019
 output:
   html_document:
     toc: yes
@@ -27,7 +27,9 @@ opts$expr <- '../data/expr/data_proc/data_expr.rds'
 opts$genes_file <- NA
 # opts$genes_file <- '../data/expr/data_raw/subpopulation_lif_genes9.csv'
 opts$samples_file <- '../data/samples/samples_stats.csv'
+opts$bulk_file <- '../../151019_ficz_sample/sample/r.rds'
 opts$cache <- F
+opts$permute <- F
 opts$alpha <- 0.1
 ```
 
@@ -108,9 +110,15 @@ ggplot(d, aes(x=met, y=expr)) +
 ## Sample-specific correlation
 
 ```{r cor, cache=opts$cache}
-cmp$r <- dat$em %>% group_by(name, sample) %>%
-  do(wtd_cor(.$expr, .$met, .$weight)) %>% ungroup %>%
-  group_by(name) %>% mutate(p_adj=p.adjust(p, method='fdr')) %>% ungroup
+r <- dat$em %>% group_by(name, sample)
+if (opts$permute) {
+  r <- r %>% do(wtd_cor(.$expr[sample(length(.$expr))], .$met, .$weight))
+} else {
+  r <- r %>% do(wtd_cor(.$expr, .$met, .$weight))
+}
+r <- r %>% ungroup %>% group_by(name) %>%
+  mutate(p_adj=p.adjust(p, method='fdr')) %>% ungroup
+cmp$r <- r
 ```
 
 ```{r}
@@ -142,18 +150,39 @@ cmp$rs <- cmp$r %>% group_by(name) %>%
 xtable(as.data.frame(cmp$rs), digits=2)
 ```
 
+```{r}
+d <- list()
+d$r <- cmp$r %>% mutate(type='sc')
+d$rbs <- cmp$rb %>% mutate(sample='bulk_syn', type='bulk_syn')
+if (!is.na(opts$bulk_file)) {
+  d$rb <- readRDS(opts$bulk_file)
+  d$rb <- d$rb %>% mutate(sample='bulk_ficz', type='bulk_ficz')
+}
+cols <- names(d[[1]])
+for (n in names(d)) {
+  cols <- intersect(cols, names(d[[n]]))
+}
+for (n in names(d)) {
+  d[[n]] <- d[[n]][,cols]
+}
+d <- do.call(rbind.data.frame, d) %>% mutate(type=factor(type), sample=factor(sample))
+cmp$rc <- d
+```
+
 ```{r fig.height=10}
-d <- cmp$r %>% group_by(name) %>% summarise(r_mean=mean(r, na.rm=T))
-d <- cmp$r %>% inner_join(d, by='name')
+d <- cmp$rc %>% group_by(name) %>% summarise(r_mean=mean(r, na.rm=T))
+d <- cmp$rc %>% inner_join(d, by='name')
 
 p <- ggplot(d, aes(x=name, y=r)) +
-  geom_hline(yintercept=0, color='darkgrey', linetype='dashed') +
+  geom_hline(yintercept=0, linetype='dashed') +
   geom_boxplot(aes(fill=r_mean), alpha=0.4, outlier.size=0) +
-  geom_point(position=position_jitter(w=0.1), size=1) +
+  geom_point(aes(color=type, size=type), position=position_jitter(w=0.1)) +
+  scale_color_manual(values=c('sc'='black', 'bulk_syn'='brown1', 'bulk_ficz'='royalblue')) +
+  scale_size_discrete(range=c(3, 1, 3)) +
   scale_fill_gradient2(low='darkblue', mid='white', high='darkred', midpoint=0.0) +
   xlab('') + ylab('r') + coord_flip() +
   theme_pub() +
-  theme(legend.position='bottom') + guides(color=guide_legend(ncol=5))
+  theme(legend.position='right')
 print(p)
 ```
 
@@ -162,7 +191,7 @@ print(p)
 
 ```{r fig.height=12}
 d <- cmp$r %>% mutate(name=factor(name, levels=rev(levels(name))))
-p <- ggplot(d, aes(x=cov, y=r)) + 
+p <- ggplot(d, aes(x=cov, y=r)) +
   geom_hline(yintercept=0, color='darkgrey') +
   geom_point(size=2) +
   guides(color=guide_legend(title='Method ')) +
@@ -181,7 +210,7 @@ ggsave('r_cov.pdf', p, width=10, height=15)
 
 ```{r fig.height=12}
 d <- cmp$r %>% mutate(name=factor(name, levels=rev(levels(name))))
-p <- ggplot(d, aes(x=CpG.rate, y=r)) + 
+p <- ggplot(d, aes(x=CpG.rate, y=r)) +
   geom_hline(yintercept=0, color='darkgrey') +
   geom_point(size=2) +
   guides(color=guide_legend(title='Method ')) +
