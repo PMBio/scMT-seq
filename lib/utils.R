@@ -1,6 +1,13 @@
 library(weights)
 library(dplyr)
 library(tidyr)
+library(stringr)
+
+format_sample <- function(s) {
+  l <- str_split(s, '_')
+  l <- sapply(l, function(x) x[length(x)])
+  return (l)
+}
 
 log_counts <- function(x) {
   return (log10(x + 1))

@@ -1,0 +1,102 @@
+---
+title: Comparison methylation variability scBS14 scBS15
+date: 151020
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F, warning=F, message=F)
+```
+
+```{r, include=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(grid)
+```
+
+```{r}
+opts <- list()
+opts$s14_file <- '../met14/stats.rds'
+opts$s15_file <- '../m15P3/stats.rds'
+opts$colors <- c('scBS14'='forestgreen', 'scBS15'='royalblue')
+opts$annos <- c('all', 'gene_body', 'intron', 'exon', 'intergenic', 'prom_cgi',
+  'prom_non_cgi', 'cgi', 'p300', 'H3K4me1', 'H3K27ac', 'H3K4me3', 'LMR')
+```
+
+```{r}
+dat <- list()
+dat$s14 <- readRDS(opts$s14_file) %>% filter(name %in% opts$annos) %>% tbl_df
+dat$s15 <- readRDS(opts$s15_file) %>% filter(name %in% opts$annos) %>% tbl_df
+d <- list()
+for (n in c('s14', 's15')) {
+  d[[n]] <- dat[[n]]
+  d[[n]]$data <- n
+}
+dat$var <- do.call(rbind.data.frame, d) %>%
+  mutate(data=factor(data, levels=c('s14', 's15'), labels=c('scBS14', 'scBS15'))) %>%
+  tbl_df
+# Scaled variance
+dat$var <- dat$var %>% group_by(data, name) %>%
+  mutate(wtd_var_s=wtd_var/sd(wtd_var, na.rm=T)) %>% ungroup
+```
+
+```{r}
+theme_pub <- function() {
+  p <- theme(
+    axis.text=element_text(size=rel(1.2), color='black'),
+    axis.title=element_text(size=rel(1.5)),
+    legend.position='top',
+    legend.text=element_text(size=rel(1.2)),
+    legend.title=element_text(size=rel(1.2)),
+    legend.key=element_rect(fill='transparent'),
+    panel.border=element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour="black", size=1),
+    axis.ticks.length = unit(.3, 'cm'),
+    axis.ticks.margin = unit(.3, 'cm')
+    )
+  return (p)
+}
+```
+
+
+## Weighted variance
+
+
+```{r fig.width=8, fig.height=8}
+d <- dat$var %>% filter(name %in% opts$annos) %>%
+  mutate(name=factor(name, levels=rev(opts$annos)))
+p <- ggplot(d, aes(x=name, fill=data, y=wtd_var)) + geom_boxplot() +
+  scale_fill_manual(values=opts$colors) +
+  xlab('') + ylab('\nWeighted variance') + coord_flip() +
+  theme_pub() + ylim(0, 1300) +
+  theme(legend.position='right')
+print(p)
+```
+
+```{r eval=F}
+ggsave('var.pdf', p, width=8, height=12)
+```
+
+
+## Unweighted variance
+
+```{r}
+ggplot(dat$var, aes(x=name, fill=data, y=var)) + geom_boxplot() +
+  xlab('') + ylab('Unweighted variance') + coord_flip() +
+  ylim(0, 2000) + theme_pub()
+```
+
+```{r}
+ggplot(dat$var, aes(x=name, fill=name, y=wtd_var)) + geom_boxplot() +
+  xlab('') + ylab('Unweighted variance') + coord_flip() +
+  facet_wrap(~data) +
+  guides(fill=F) +
+  ylim(0, 2000)
+```

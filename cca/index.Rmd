@@ -130,7 +130,6 @@ mi <- m %>% impute
 pm <- pca(mi)
 p1 <- plot_pca_vec(pm$vec) + theme_pub()
 p2 <- plot_pca_val(pm$val) + theme_pub()
-grid.arrange(p1, p2, ncol=2)
 ```
 
 ```{r fig.width=6, fig.height=6}

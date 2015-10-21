@@ -1,6 +1,5 @@
 ---
 title: Robustness gene-specific analysis
-date: 151020
 output:
   html_document:
     toc: yes
@@ -27,8 +26,8 @@ opts$expr <- '../data/expr/data_proc/data_expr.rds'
 opts$expr_meta <- '../data/expr/data_proc/data_meta.rds'
 opts$genes_file <- '../data/expr/data_raw/subpopulation_lif_genes9.csv'
 opts$alpha <- 0.1
-opts$keep <- c(0.6, 0.8)
-opts$trials <- 3
+opts$keep <- c(0.6, 0.7, 0.8)
+opts$trials <- 5
 
 opts$rnd_trials <- 0
 opts$filter_genes <- F
@@ -162,21 +161,7 @@ cmp$rb <- do.call(rbind.data.frame, r)
 ```
 
 ```{r}
-cmp$rba <- cmp$rb %>% group_by(name, id_.x, id_.y, keep) %>%
-  summarise_each(funs(mean)) %>% ungroup
-```
-
-```{r fig.width=10, fig.height=10}
-h <- cmp$r %>% inner_join(cmp$rba, by=c('name', 'id_.x', 'id_.y'))
-d <- h %>% mutate(keep=factor(keep))
-ggplot(d, aes(x=r.x, y=r.y, color=keep)) +
-  geom_abline(slope=1, color='grey') +
-  stat_density2d(aes(fill=keep)) +
-  geom_point(size=0.5) +
-  facet_wrap(~name) +
-  xlim(-1, 1) + ylim(-1, 1) +
-  xlab('All samples') + ylab('Bootstrapped samples') +
-  theme_pub()
+saveRDS(cmp$rb, 'r.rds')
 ```
 
 ```{r}
@@ -185,7 +170,7 @@ cmp$rb <- cmp$rb[complete.cases(cmp$rb),]
 
 ```{r}
 d <- cmp$r %>% inner_join(cmp$rb, by=c('name', 'id_.x', 'id_.y'))
-st <- d %>% group_by(name, keep, trial) %>%
+cmp$st <- d %>% group_by(name, keep, trial) %>%
   summarise(
     mse=mean(sqrt((r.x - r.y)**2), na.rm=T),
     mad=mean(abs(r.x - r.y), na.rm=T),
@@ -197,25 +182,50 @@ st <- d %>% group_by(name, keep, trial) %>%
 ```
 
 ```{r}
-s <- st %>% group_by(name, keep) %>% select(-trial) %>%
-  summarise_each(funs(mean)) %>%
-  ungroup %>% arrange(name, keep)
+cmp$s <- cmp$st %>% group_by(name, keep) %>% select(-trial) %>%
+  summarise(
+    mse_mean=mean(mse),
+    mse_min=min(mse),
+    mse_max=max(mse),
+    mse_sd=sd(mse),
+    sig_pos_mean=mean(sig_pos),
+    sig_pos_min=min(sig_pos),
+    sig_pos_max=max(sig_pos),
+    sig_neg_mean=mean(sig_neg),
+    sig_neg_min=min(sig_neg),
+    sig_neg_max=max(sig_neg)
+    ) %>% ungroup %>% arrange(name, keep)
 ```
 
-```{r results='asis'}
-xtable(s, digits=3)
+```{r}
+# Average over trials
+cmp$rba <- cmp$rb %>% group_by(name, id_.x, id_.y, keep) %>%
+  summarise_each(funs(mean)) %>% ungroup
 ```
 
-```{r fig.width=6, fig.height=12}
-d <- s %>% select(-sig_pos, -sig_neg) %>%
-  gather(stat, value, -c(name, keep)) %>%
+```{r eval=T, fig.width=10, fig.height=10}
+h <- cmp$r %>% inner_join(cmp$rba, by=c('name', 'id_.x', 'id_.y'))
+d <- h %>% mutate(keep=factor(keep))
+ggplot(d, aes(x=r.x, y=r.y, color=keep)) +
+  geom_abline(slope=1, color='grey') +
+  stat_density2d(aes(fill=keep)) +
+  # geom_point(size=0.5) +
+  facet_wrap(~name) +
+  xlim(-1, 1) + ylim(-1, 1) +
+  xlab('All samples') + ylab('Bootstrapped samples') +
+  theme_pub()
+```
+
+```{r fig.width=8, fig.height=7}
+d <- cmp$s %>%
   mutate(keep=factor(keep), name=factor(name, levels=rev(levels(name))))
-ggplot(d, aes(x=name, y=value)) +
+ggplot(d, aes(x=name, y=mse_mean)) +
   geom_bar(aes(fill=keep), stat='identity', position='dodge') +
-  facet_wrap(~stat, ncol=1) +
-  xlab('') + ylab('') +
+  xlab('') + ylab('Mean Squared Error') +
   coord_flip() +
   theme_pub()
 ```
 
-
+```{r results='asis'}
+xtable(cmp$s, digits=2)
+```

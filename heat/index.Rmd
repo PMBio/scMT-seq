@@ -1,0 +1,117 @@
+---
+title: Joint clustering on expression and methylation
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F, warning=F, message=F)
+```
+
+```{r, include=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(RColorBrewer)
+library(gridExtra)
+library(gplots)
+library(corrplot)
+library(ggdendro)
+library(weights)
+library(stringr)
+source('viz.R')
+```
+
+```{r}
+opts <- list()
+opts$data_file <- '../data/join/data.rds'
+opts$r_file <- '../gene/r.rds'
+opts$genes_file <- '../data/expr/data_raw/subpopulation_lif_genes9.csv'
+opts$init <- T
+```
+
+```{r read, eval=opts$init}
+read_genes <- function(f) {
+  d <- read.csv(f, sep=',', head=T) %>% tbl_df
+  names(d) <- c('ens_id', 'gene_id')
+  return (d)
+}
+
+format_sample <- function(s) {
+  l <- str_split(s, '_')
+  l <- sapply(l, function(x) x[length(x)])
+  return (l)
+}
+
+dat <- list()
+dat$em <- readRDS(opts$data_file) %>%
+  mutate(sample=factor(sample, labels=format_sample(levels(sample))))
+dat$r <- readRDS(opts$r_file)
+dat$genes <- read_genes(opts$genes_file)
+opts$n <- 300
+```
+
+
+```{r prepro, eval=opts$init}
+dat$s <- dat$em %>% group_by(name, id_.x, id_.y) %>%
+  summarise(
+    expr_mean = mean(expr),
+    expr_var = var(expr),
+    met_mean = weighted.mean(met, weight, na.rm=T),
+    met_var = wtd.var(met, weight, na.rm=T)
+    ) %>% ungroup
+dat$rs <- dat$r %>% inner_join(dat$s, by=c('name', 'id_.x', 'id_.y'))
+```
+
+## Gene-body: ordered by expression clustering
+
+```{r}
+dclust <- data_clust('gene_body', opts$n)
+```
+
+```{r fig.width=10, fig.height=10}
+pe <- plot_heat_expr(dclust)
+```
+
+```{r fig.width=10, fig.height=10}
+pm <- plot_heat_met(dclust, pe)
+```
+
+```{r fig.height=10, fig.width=2}
+plot_tracks(data_track(dclust, pe))
+```
+
+
+## Gene-body: ordered by correlation
+
+
+```{r}
+dclust <- data_clust('gene_body', opts$n)
+r <- dclust$r %>% arrange(r)
+s <- r %>% select(id_.x, id_.y)
+d <- dclust$em %>% select(id_.x, id_.y, gene_id, sample, met, expr)
+d <- s %>% inner_join(d, by=c('id_.x', 'id_.y'))
+m <- d %>% select(-expr) %>% spread(sample, met)
+e <- d %>% select(-met) %>% spread(sample, expr)
+stopifnot(nrow(m) == nrow(s))
+stopifnot(nrow(e) == nrow(s))
+stopifnot(all(dim(m) == dim(e)))
+```
+
+```{r fig.width=10, fig.height=10}
+d <- e %>% select(-c(id_.x, id_.y, gene_id)) %>% as.matrix
+pe <- plot_heat(d, col=brewer_cols('OrRd'), Rowv=NA)
+```
+
+```{r fig.width=10, fig.height=10}
+d <- m %>% select(-c(id_.x, id_.y, gene_id)) %>% as.matrix
+pm <- plot_heat(d, col=brewer_cols('PuBuGn'), Rowv=NA)
+```
+
+```{r fig.height=10, fig.width=2}
+d <- r %>% select(r, expr_var, met_var) %>% mutate(i=1:n()) %>%
+  gather(param, value, -i)
+plot_tracks(d)
+```

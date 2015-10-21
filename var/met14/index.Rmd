@@ -1,0 +1,132 @@
+---
+title: Quantification methylation variability
+date: 150418
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F)
+```
+
+```{r, include=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(weights)
+library(xtable)
+options(xtable.type='html')
+```
+
+```{r}
+opts <- list()
+opts$data_dir <- '../data/met14'
+opts$samples_file <- '../data/met14/samples_meta.csv'
+opts$cache <- T
+```
+
+```{r read, cache=opts$cache}
+read_samples <- function(filename) {
+  h <- read.table(filename, sep='\t', head=T) %>% tbl_df
+  return (h)
+}
+
+dat <- list()
+d <- list.dirs(opts$data_dir, full.names=F, recursive=F) %>% basename
+d <- setdiff(d, c('tmp', 'met'))
+dat$annos <- d
+# dat$annos <- c('active_enhancer', 'IAP', 'cgi')
+d <- list()
+for (a in dat$annos) {
+  d[[a]] <- readRDS(file.path(opts$data_dir, a, 'data_met.rds'))
+  d[[a]]$name <- a
+}
+d <- do.call(rbind.data.frame, d)
+dat$met <- d %>% tbl_df
+dat$samples <- read_samples(opts$samples_file)
+h <- dat$samples %>% filter(cond == 'serum', id != 'ESC_Ser3_RSC27_4',
+  id != 'ESC_Ser6_RSC27_7') %>% select(id) %>% unlist %>%
+  as.vector
+dat$met <- dat$met %>% filter(sample %in% h) %>% mutate(sample=factor(sample))
+rownames(dat$met) <- NULL
+```
+
+```{r compute, cache=opts$cache}
+stats <- function(d) {
+  s <- summarise(d,
+    mean=mean(met, na.rm=T),
+    var=var(met, na.rm=T),
+    wtd_mean=weighted.mean(met, weight, na.rm=T),
+    wtd_var=wtd.var(met, weight, na.rm=T)
+    )
+  return (s)
+}
+  
+cmp <- list()
+cmp$var <- dat$met %>% group_by(name, id_) %>% stats
+d <- dat$met %>% group_by(id_) %>% stats
+d$name <- 'all'
+cmp$var <- rbind.data.frame(cmp$var, d) %>% ungroup
+cmp$var <- cmp$var %>% mutate(name=factor(name)) %>%
+  mutate(name=factor(name, levels=sort(levels(name)))) %>%
+  mutate(name=relevel(name, 'all')) %>%
+  mutate(name=factor(name, levels=rev(levels(name))))
+
+cmp$stats <- cmp$var %>% group_by(name) %>% summarise(
+  n=n(),
+  mean=mean(mean, na.rm=T),
+  wtd_mean=mean(wtd_mean, na.rm=T),
+  var=mean(var, na.rm=T),
+  wtd_var=mean(wtd_var, na.rm=T)
+  ) %>% arrange(name)
+```
+
+```{r}
+saveRDS(cmp$var, file='stats.rds')
+```
+
+## Statistics
+
+```{r results='asis'}
+d <- as.data.frame(cmp$stats %>% arrange(desc(name)))
+print(xtable(d, digits=2))
+```
+
+## Weighted variance
+
+```{r}
+ggplot(cmp$var, aes(x=name, fill=name, y=wtd_var)) + geom_boxplot() +
+  xlab('') + ylab('Weighted variance') + coord_flip() + guides(fill=F)
+```
+
+## Unweighted variance
+
+```{r}
+ggplot(cmp$var, aes(x=name, fill=name, y=var)) + geom_boxplot() +
+  xlab('') + ylab('Unweighted variance') + coord_flip() + guides(fill=F)
+```
+
+## Weighted mean
+
+```{r}
+ggplot(cmp$var, aes(x=name, fill=name, y=wtd_mean)) + geom_boxplot() +
+  xlab('') + ylab('Weighted mean') + coord_flip() + guides(fill=F)
+```
+
+## Unweighted mean
+
+```{r}
+ggplot(cmp$var, aes(x=name, fill=name, y=mean)) + geom_boxplot() +
+  xlab('') + ylab('Unweighted mean') + coord_flip() + guides(fill=F)
+```
+
+## Number of sites
+
+```{r}
+d <- cmp$stats %>% filter(name != 'all')
+ggplot(d, aes(x=name, y=n, fill=name)) +
+  geom_bar(stat='identity') + xlab('') + ylab('Number of sites') +
+  coord_flip() + guides(fill=F)
+```
