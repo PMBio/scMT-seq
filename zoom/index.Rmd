@@ -1,0 +1,106 @@
+---
+title: Esrrb
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F, warning=F, message=F, fig.width=10)
+```
+
+```{r, include=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(gridExtra)
+library(scales)
+library(xtable)
+source('../lib/utils.R')
+source('./viz.R')
+```
+
+```{r}
+options(xtable.type='html')
+```
+
+```{r}
+opts <- list()
+opts$max_dist <- 10000
+opts$win$met_file <- 'w3k_s1k_d20k/data_met.rds'
+opts$win$meta_file <- 'w3k_s1k_d20k/data_meta.rds'
+opts$em_file <- '../data/join/data.rds'
+opts$expr$rate_file <- '../data/expr/data_proc/data_expr.rds'
+opts$expr$meta_file <- '../data/expr/data_proc/data_meta.rds'
+opts$sample_filter <- c()
+opts$init <- F
+```
+
+```{r read, eval=opts$init}
+filter_samples <- function(d) {
+  f <- opts$samples_filter
+  if (!is.na(t) & length(f) > 0) {
+    d <- d %>% filter(sample %in% f)
+  }
+  return (d)
+}
+
+dat <- list()
+dat$win$met <- readRDS(opts$win$met_file) %>% tbl_df %>% filter_samples
+dat$win$meta <- readRDS(opts$win$meta_file) %>% tbl_df
+dat$expr$rate <- readRDS(opts$expr$rate_file) %>% tbl_df %>% filter_samples
+dat$expr$meta <- readRDS(opts$expr$meta_file) %>% tbl_df
+dat$em$all <- readRDS(opts$em_file) %>% tbl_df %>% filter_samples
+dat$em$meta <- dat$em$all %>% select(-c(sample, expr, met, weight)) %>% distinct
+```
+
+```{r eval=opts$init}
+cmp <- list()
+cmp$r <- readRDS('../gene/r.rds')
+```
+
+```{r eval=opts$init}
+viz <- list()
+viz$sel <- cmp$r %>%
+  filter(name %in% c('LMR', 'p300'), gene_id == 'Esrrb', p_adj < 0.1) %>%
+  arrange(r) %>% head(10) %>%
+  select(ens_id, gene_id, name, id_.x, id_.y, r, p, p_adj, chromo, start.x, end.x, start.y, end.y)
+idx <- viz$sel[1,]$id_.x
+```
+
+```{r eval=opts$init}
+viz$d <- make_data(idx)
+```
+
+```{r}
+a <- list()
+a$gene <- c(86361117, 86521628)
+a$TSS <- c(86360117, 86361217)
+for (i in 1:nrow(viz$sel)) {
+  v <- viz$sel[i,]
+  a[[sprintf('%s_%d', v$name, i)]] <- c(v$start.y, v$end.y)
+}
+viz$da <- data_anno(a)
+
+viz$a <- plot_anno(viz$da)
+viz$v <- plot_var(viz$d$v, pa=viz$a, xlab=T)
+viz$r <- plot_cor(viz$d$r, pa=viz$a, xlab=T)
+viz$m <- plot_met(viz$d$em, pa=viz$a)
+```
+
+```{r tracks, fig.width=14, fig.height=10}
+grid.arrange(viz$v, viz$r, viz$m, nrow=3, heights=c(0.25, 0.25, 0.5))
+```
+
+```{r results='asis'}
+xtable(viz$sel, digits=4)
+```
+
+```{r scatter, fig.width=6, fig.height=6}
+for (i in 1:nrow(viz$sel)) {
+  v <- viz$sel[i,]
+  print(plot_scatter(v$name, v$id_.x, v$id_.y))
+}
+```
+

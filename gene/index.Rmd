@@ -89,6 +89,7 @@ if (!is.null(opts$num_genes) && opts$num_genes > 0) {
   h <- h[sample(length(h))][1:opts$num_genes]
   dat$em <- dat$em %>% filter(ens_id %in% h)
 }
+dat$em <- dat$em %>% droplevels
 
 h <- dat$em %>% group_by(name, id_.x, id_.y) %>% top_n(1, expr) %>% ungroup %>%
   select(id_.x, id_.y, name, ens_id, gene_id, chromo=chromo.x, start.x, end.x, start.y, end.y, strand)
@@ -96,6 +97,7 @@ a <- dat$genes %>% mutate(pluri=T) %>% select(-gene_id)
 h <- h %>% left_join(a, by='ens_id')
 h[is.na(h$pluri),]$pluri <- F
 dat$em_meta <- h
+dat$em_meta <- dat$em_meta %>% droplevels
 ```
 
 
@@ -158,33 +160,36 @@ p_adjust_rnd <- function(r, name) {
 ```
 
 ```{r}
-d <- cmp$r
-h <- d %>% group_by(name) %>% summarise(n=n()) %>%
-  filter(n >= opts$min_sites) %>% select(name) %>% unlist
-d <- d %>% filter(name %in% h) %>% mutate(name=droplevels(name))
+annotate_r <- function(d) {
+  h <- d %>% group_by(name) %>% summarise(n=n()) %>%
+    filter(n >= opts$min_sites) %>% select(name) %>% unlist
+  d <- d %>% filter(name %in% h) %>% mutate(name=droplevels(name))
 
-d <- d %>% group_by(name) %>%
-  mutate(p_fdr=p.adjust(p, method='fdr')) %>% ungroup
+  d <- d %>% group_by(name) %>%
+    mutate(p_fdr=p.adjust(p, method='fdr')) %>% ungroup
 
-if (opts$rnd_trials > 0) {
-  d$p_rnd <- p_adjust_rnd(d$r, as.vector(d$name))
-} else {
-  d$p_rnd <- d$p_fdr
+  if (opts$rnd_trials > 0) {
+    d$p_rnd <- p_adjust_rnd(d$r, as.vector(d$name))
+  } else {
+    d$p_rnd <- d$p_fdr
+  }
+
+  d$p_adj <- d$p_fdr
+
+  h <- nrow(d)
+  d <- d %>% inner_join(dat$em_meta, by=c('name', 'id_.x', 'id_.y'))
+  stopifnot(h == nrow(d))
+
+  d <- d %>% ungroup %>%
+    mutate(name=factor(name)) %>%
+    mutate(name=factor(name, levels=rev(sort(levels(name))))) %>%
+    arrange(desc(name), p_adj, desc(abs(r)))
+  return (d)
 }
 
-d$p_adj <- d$p_fdr
+cmp$r <- annotate_r(cmp$r)
 
-h <- nrow(d)
-d <- d %>% inner_join(dat$em_meta, by=c('name', 'id_.x', 'id_.y'))
-stopifnot(h == nrow(d))
-
-d <- d %>% ungroup %>%
-  mutate(name=factor(name)) %>%
-  mutate(name=factor(name, levels=rev(sort(levels(name))))) %>%
-  arrange(desc(name), p_adj, desc(abs(r)))
-
-saveRDS(d, 'r.rds')
-cmp$r <- d
+saveRDS(cmp$r, 'r.rds')
 ```
 
 
@@ -471,8 +476,6 @@ plot_sites(d$em)
 ```{r results='asis'}
 print(xtable(tab_data(d$r), digits=2))
 ```
-
-
 
 
 

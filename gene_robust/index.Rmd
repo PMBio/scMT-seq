@@ -1,0 +1,221 @@
+---
+title: Robustness gene-specific analysis
+date: 151020
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F, warning=F, message=F)
+```
+
+```{r, include=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(xtable)
+options(xtable.type='html')
+source('../lib/utils.R')
+```
+
+```{r}
+opts <- list()
+opts$data_file <- '../data/join/data.rds'
+opts$expr <- '../data/expr/data_proc/data_expr.rds'
+opts$expr_meta <- '../data/expr/data_proc/data_meta.rds'
+opts$genes_file <- '../data/expr/data_raw/subpopulation_lif_genes9.csv'
+opts$alpha <- 0.1
+opts$keep <- c(0.6, 0.8)
+opts$trials <- 3
+
+opts$rnd_trials <- 0
+opts$filter_genes <- F
+opts$min_sites <- 10
+opts$cache <- T
+opts$mean <- F
+opts$permute <- F
+opts$num_genes <- 0
+opts$annos <- c()
+# opts$annos <- c('active_enhancer', 'H3K4me1', 'H3K4me1_Tet1', 'H3K27ac',
+#   'H3K27me3', 'cgi', 'prom', 'prom_cgi', 'prom_non_cgi', 'LMR', 'p300',
+#   'gene_body', 'Wu_Tet1')
+set.seed(0)
+```
+
+```{r}
+theme_pub <- function() {
+  p <- theme(
+    axis.text=element_text(size=rel(1.2), color='black'),
+    axis.title=element_text(size=rel(1.5)),
+    legend.position='top',
+    legend.text=element_text(size=rel(1.2)),
+    legend.title=element_text(size=rel(1.2)),
+    legend.key=element_rect(fill='transparent'),
+    panel.border=element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour="black", size=1),
+    axis.ticks.length = unit(.3, 'cm'),
+    axis.ticks.margin = unit(.3, 'cm')
+    )
+  return (p)
+}
+```
+
+Significance threshold: `r opts$alpha`
+
+```{r}
+cmp <- list()
+dat <- list()
+```
+
+```{r dat}
+read_genes <- function(f) {
+  d <- read.csv(f, sep=',', head=T) %>% tbl_df
+  names(d) <- c('ens_id', 'gene_id')
+  return (d)
+}
+
+dat$em <- readRDS(opts$data_file)
+# dat$em <- dat$em %>% filter(chromo.x %in% c(1)) %>% droplevels
+dat$expr_meta <- readRDS(opts$expr_meta)
+dat$genes <- read_genes(opts$genes_file)
+if (opts$filter_genes) {
+  h <- as.vector(dat$genes$ens_id)
+  dat$em <- dat$em %>% filter(ens_id %in% h)
+}
+if (!is.null(opts$num_genes) && opts$num_genes > 0) {
+  h <- levels(dat$em$ens_id)
+  h <- h[sample(length(h))][1:opts$num_genes]
+  dat$em <- dat$em %>% filter(ens_id %in% h)
+}
+dat$em <- dat$em %>% droplevels
+
+h <- dat$em %>% group_by(name, id_.x, id_.y) %>% top_n(1, expr) %>% ungroup %>%
+  select(id_.x, id_.y, name, ens_id, gene_id, chromo=chromo.x, start.x, end.x, start.y, end.y, strand)
+a <- dat$genes %>% mutate(pluri=T) %>% select(-gene_id)
+h <- h %>% left_join(a, by='ens_id')
+h[is.na(h$pluri),]$pluri <- F
+dat$em_meta <- h
+dat$em_meta <- dat$em_meta %>% droplevels
+```
+
+```{r}
+annotate_r <- function(d) {
+  h <- d %>% group_by(name) %>% summarise(n=n()) %>%
+    filter(n >= opts$min_sites) %>% select(name) %>% unlist
+  d <- d %>% filter(name %in% h) %>% mutate(name=droplevels(name))
+
+  d <- d %>% group_by(name) %>%
+    mutate(p_fdr=p.adjust(p, method='fdr')) %>% ungroup
+
+  if (opts$rnd_trials > 0) {
+    d$p_rnd <- p_adjust_rnd(d$r, as.vector(d$name))
+  } else {
+    d$p_rnd <- d$p_fdr
+  }
+
+  d$p_adj <- d$p_fdr
+
+  h <- nrow(d)
+  d <- d %>% inner_join(dat$em_meta, by=c('name', 'id_.x', 'id_.y'))
+  stopifnot(h == nrow(d))
+
+  d <- d %>% ungroup %>%
+    mutate(name=factor(name)) %>%
+    mutate(name=factor(name, levels=rev(sort(levels(name))))) %>%
+    arrange(desc(name), p_adj, desc(abs(r)))
+  return (d)
+}
+```
+
+```{r cor, cache=opts$cache}
+cmp$r <- dat$em %>% group_by(name, id_.x, id_.y) %>%
+  do(wtd_cor(.$expr, .$met, .$weight)) %>% ungroup
+```
+
+```{r}
+cmp$r <- annotate_r(cmp$r)
+```
+
+
+```{r cor_robust, cache=opts$cache}
+samples <- levels(dat$em$sample)
+r <- list()
+for (k in opts$keep) {
+  for (i in 1:opts$trials) {
+    s <- sample(samples, round(length(samples) * k))
+    d <- dat$em %>% filter(sample %in% s)
+    rb <- d %>% group_by(name, id_.x, id_.y) %>%
+        do(wtd_cor(.$expr, .$met, .$weight)) %>%
+        ungroup
+    rb <- rb %>% group_by(name, p_adj=p.adjust(p, method='fdr')) %>% ungroup
+    rb$trial <- i
+    rb$keep <- k
+    r[[length(r) + 1]] <- rb
+  }
+}
+cmp$rb <- do.call(rbind.data.frame, r)
+```
+
+```{r}
+cmp$rba <- cmp$rb %>% group_by(name, id_.x, id_.y, keep) %>%
+  summarise_each(funs(mean)) %>% ungroup
+```
+
+```{r fig.width=10, fig.height=10}
+h <- cmp$r %>% inner_join(cmp$rba, by=c('name', 'id_.x', 'id_.y'))
+d <- h %>% mutate(keep=factor(keep))
+ggplot(d, aes(x=r.x, y=r.y, color=keep)) +
+  geom_abline(slope=1, color='grey') +
+  stat_density2d(aes(fill=keep)) +
+  geom_point(size=0.5) +
+  facet_wrap(~name) +
+  xlim(-1, 1) + ylim(-1, 1) +
+  xlab('All samples') + ylab('Bootstrapped samples') +
+  theme_pub()
+```
+
+```{r}
+cmp$rb <- cmp$rb[complete.cases(cmp$rb),]
+```
+
+```{r}
+d <- cmp$r %>% inner_join(cmp$rb, by=c('name', 'id_.x', 'id_.y'))
+st <- d %>% group_by(name, keep, trial) %>%
+  summarise(
+    mse=mean(sqrt((r.x - r.y)**2), na.rm=T),
+    mad=mean(abs(r.x - r.y), na.rm=T),
+    sig_pos=sum(p_adj.y <= opts$alpha & r.y > 0) - sum(p_adj.x <= opts$alpha & r.x > 0),
+    sig_neg=sum(p_adj.y <= opts$alpha & r.y < 0) - sum(p_adj.x <= opts$alpha & r.x < 0)
+    ) %>% ungroup %>%
+  mutate(name=factor(name, levels=sort(unique(name)))) %>%
+  arrange(name, keep, trial)
+```
+
+```{r}
+s <- st %>% group_by(name, keep) %>% select(-trial) %>%
+  summarise_each(funs(mean)) %>%
+  ungroup %>% arrange(name, keep)
+```
+
+```{r results='asis'}
+xtable(s, digits=3)
+```
+
+```{r fig.width=6, fig.height=12}
+d <- s %>% select(-sig_pos, -sig_neg) %>%
+  gather(stat, value, -c(name, keep)) %>%
+  mutate(keep=factor(keep), name=factor(name, levels=rev(levels(name))))
+ggplot(d, aes(x=name, y=value)) +
+  geom_bar(aes(fill=keep), stat='identity', position='dodge') +
+  facet_wrap(~stat, ncol=1) +
+  xlab('') + ylab('') +
+  coord_flip() +
+  theme_pub()
+```
+
+
