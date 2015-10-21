@@ -1,0 +1,258 @@
+---
+title: Canonical Correlation Analysis
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F, warning=F, message=F, fig.width=10)
+```
+
+```{r, include=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(RColorBrewer)
+library(gridExtra)
+library(corrplot)
+library(gplots)
+library(stringr)
+library(xtable)
+source('../lib/utils.R')
+```
+
+```{r}
+options(xtable.type='html')
+```
+
+```{r}
+opts <- list()
+opts$expr$file <- '../data/expr/data_proc/data_expr.rds'
+opts$met$file <- '../data/met/join/data_met.rds'
+# opts$samples_file <- '../data/samples/samples_meta.csv'
+```
+
+```{r}
+theme_pub <- function() {
+  p <- theme(
+    axis.text=element_text(size=rel(1.2), color='black'),
+    axis.title=element_text(size=rel(1.5)),
+    legend.position='top',
+    legend.text=element_text(size=rel(1.2)),
+    legend.title=element_text(size=rel(1.2)),
+    legend.key=element_rect(fill='transparent'),
+    panel.border=element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour="black", size=1),
+    axis.ticks.length = unit(.3, 'cm'),
+    axis.ticks.margin = unit(.3, 'cm')
+    )
+  return (p)
+}
+```
+
+```{r}
+read_samples <- function(filename) {
+  h <- read.table(filename, sep='\t', head=T) %>% tbl_df
+  return (h)
+}
+
+format_sample <- function(s) {
+  l <- str_split(s, '_')
+  l <- sapply(l, function(x) x[length(x)])
+  return (l)
+}
+
+dat <- list()
+dat$expr <- readRDS(opts$expr$file) %>% mutate(sample=factor(sample, label=format_sample(levels(sample))))
+dat$met <- readRDS(opts$met$file) %>% mutate(sample=factor(sample, label=format_sample(levels(sample))))
+```
+
+```{r}
+plot_pca_vec <- function(pc_vec, x=1, y=2, color=F) {
+  t <- data.frame(sample=factor(rownames(pc_vec)),
+    pcx=pc_vec[,x], pcy=pc_vec[,y])
+  p <- ggplot(t, aes(x=pcx, y=pcy)) + geom_point(aes(color=sample)) +
+    geom_text(aes(label=sample), vjust=-.4, hjust= .3, size=3) +
+    xlab(sprintf('pc%d', x)) + ylab(sprintf('pc%d', y)) +
+    guides(color=F)
+  return (p)
+}
+
+plot_pca_val <- function(pc_val) {
+  t <- data.frame(pc=1:length(pc_val), val=pc_val)
+  p <- ggplot(t, aes(x=pc, y=val)) +
+    geom_bar(stat='identity', fill='salmon', color='black') +
+    xlab('principle component') +
+    ylab('% variance explained')
+  return (p)
+}
+
+plot_pca_heat <- function(d, title='PC') {
+  colors <- rev(brewer.pal(9, 'Spectral'))
+  colors <- colorRampPalette(colors)(50)
+
+  p <- heatmap.2(d, density.info='none', trace='none',
+    col=colors, Rowv=F, Colv=T, keysize=1.0, dendro='column',
+    lwid=c(2, 5), key.title='', srtCol=45, key.xlab=title)
+  return (p)
+}
+```
+
+## PCA expression
+
+```{r}
+e <- dat$expr %>% select(id_, sample, expr) %>% spread(sample, expr)
+e <- e %>% select(-id_) %>% as.matrix
+pe <- pca(e)
+p1 <- plot_pca_vec(pe$vec) + theme_pub()
+p2 <- plot_pca_val(pe$val) + theme_pub()
+```
+
+```{r fig.width=6, fig.height=6}
+print(p1)
+```
+
+```{r fig.width=6, fig.height=4}
+print(p2)
+```
+
+## PCA methylation
+
+```{r}
+m <- dat$met %>% filter(name == 'gene_body') %>% select(id_, sample, met) %>%
+  spread(sample, met) %>% select(-id_) %>% as.matrix
+mi <- m %>% impute
+pm <- pca(mi)
+p1 <- plot_pca_vec(pm$vec) + theme_pub()
+p2 <- plot_pca_val(pm$val) + theme_pub()
+grid.arrange(p1, p2, ncol=2)
+```
+
+```{r fig.width=6, fig.height=6}
+print(p1)
+```
+
+```{r fig.width=6, fig.height=4}
+print(p2)
+```
+
+## Principle components
+
+```{r fig.width=10, fig.height=7}
+pce <- t(pe$vec)
+pcm <- t(pm$vec)
+rownames(pce) <- paste('epc', 1:ncol(pce))
+rownames(pcm) <- paste('mpc', 1:ncol(pcm))
+h <- plot_pca_heat(pce, title='Expression PC')
+h <- plot_pca_heat(pcm, title='Methylation PC')
+```
+
+#### Correlation Principle Components
+
+```{r fig.width=10, fig.height=10}
+h <- cor(t(pce), t(pcm))
+corrplot(h, method='color')
+```
+
+```{r eval=F}
+pdf(file='cor_pc.pdf', width=10, height=10)
+corrplot(h, method='color')
+dev.off()
+```
+
+```{r}
+de <- pce %>% as.data.frame %>% mutate(pc=1:n()) %>%
+  gather(sample, value, -pc) %>% tbl_df
+dm <- pcm %>% as.data.frame %>% mutate(pc=1:n()) %>%
+  gather(sample, value, -pc) %>% tbl_df
+pcs <- de %>% inner_join(dm, by='sample') %>%
+  rename(pce=pc.x, expr=value.x, pcm=pc.y, met=value.y)
+```
+
+```{r fig.height=10}
+n <- 5
+d <- pcs %>% filter(pce <= n, pcm <= 5)
+p <- ggplot(d, aes(x=met, y=expr)) +
+  stat_smooth(method=lm, color='black') +
+  geom_point(aes(color=sample), size=2) +
+  xlab('Methylation PC') + ylab('Expression PC') +
+  facet_grid(pce~pcm) +
+  guides(color=F)
+print(p)
+```
+
+```{r eval=F}
+ggsave('cor_pc_scatter.pdf', p, width=10, height=10)
+```
+
+```{r}
+plot_cor_pc <- function(pcm_, pce_) {
+  d <- pcs %>% filter(pcm == pcm_, pce == pce_)
+  p <- ggplot(d, aes(x=met, y=expr)) +
+    stat_smooth(method=lm, color='black') +
+    geom_point(aes(color=sample), size=2) +
+    xlab(sprintf('Methylation PC %d', pcm_)) +
+    ylab(sprintf('Expression PC %d', pce_)) +
+    guides(color=F) + theme_pub()
+  return (p)
+}
+```
+
+```{r}
+r <- pcs %>% group_by(pcm, pce) %>% summarise(r=cor(expr, met)) %>% ungroup %>%
+  arrange(desc(abs(r))) %>% head(10)
+```
+
+```{r results='asis'}
+xtable(r, digits=c(0, 0, 0, 3))
+```
+
+```{r fig.width=6, fig.height=6}
+for (i in 1:nrow(r)) {
+  print(plot_cor_pc(r[i,]$pcm, r[i,]$pce))
+}
+```
+
+
+
+
+
+
+```{r}
+opts_chunk$set(eval=F)
+```
+
+
+```{r cache=T}
+X <- t(ev)
+Y <- t(mc)
+rc <- rcc(X, Y, 0.1, 0.5)
+```
+
+```{r}
+xs <- rc$scores$xscores
+ys <- rc$scores$yscores
+d <- data.frame(sample=rownames(xs), x=xs[,1], y=ys[,2])
+d <- d %>% inner_join(dat$samples, by='sample')
+d$sample_short <- sub('^CSC\\d+_', '', d$sample)
+
+p1 <- ggplot(d, aes(x=x, y=y)) + geom_point(aes(color=method)) +
+  geom_text(aes(label=sample_short), size=2.5, just=0.5, vjust=-0.2) +
+  xlab('Dimension 1') + ylab('Dimension 2') +
+  theme(legend.position='bottom')
+
+d <- data.frame(x=1:22, y=rc$cor[1:22])
+p2 <- ggplot(d, aes(x=x, y=y)) + geom_bar(stat='identity', fill='salmon') +
+  xlab('CC 2') + ylab('Correlation')
+
+grid.arrange(p1, p2, ncol=2)
+```
+
+```{r}
+plt.cc(rc)
+```
