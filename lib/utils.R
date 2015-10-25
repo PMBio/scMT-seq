@@ -3,6 +3,25 @@ library(dplyr)
 library(tidyr)
 library(stringr)
 
+theme_pub <- function() {
+  p <- theme(
+    axis.text=element_text(size=rel(1.2), color='black'),
+    axis.title=element_text(size=rel(1.5)),
+    legend.position='top',
+    legend.text=element_text(size=rel(1.2)),
+    legend.title=element_text(size=rel(1.2)),
+    legend.key=element_rect(fill='transparent'),
+    panel.border=element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour="black", size=1),
+    axis.ticks.length = unit(.3, 'cm'),
+    axis.ticks.margin = unit(.3, 'cm')
+    )
+  return (p)
+}
+
 format_sample <- function(s) {
   l <- str_split(s, '_')
   l <- sapply(l, function(x) x[length(x)])
@@ -82,9 +101,9 @@ adjust_df <- function(d) {
   return (d)
 }
 
-pca <- function(d) {
+pca <- function(d, center=T, scale=F) {
   # columns are samples
-  d <- scale(d, center=T, scale=F)
+  d <- scale(d, center=center, scale=scale)
   d <- t(d)
   s <- svd(d)
   vec <- s$u
@@ -106,14 +125,70 @@ rbind_frames <- function(d) {
   return (d)
 }
 
-# reads several files by fun and concats them
-read_all <- function(filenames, fun) {
-  d <- list()
-  for (filename in filenames) {
-    h <- fun(filename)
-    h$file <- basename(filename)
-    d[[length(d) + 1]] <- h
+read_report_meta <- function(filename, n=NULL) {
+  if (!is.null(n)) {
+  h <- 'cut -f 2-5,7,8,12'
+    h <- sprintf('head -n %d %s | %s', n, filename, h)
+  } else {
+    h <- sprintf('%s %s', h, filename)
   }
-  h <- rbind_frames(d) %>% mutate(file=factor(file))
+  h <- 'cut -f 2-5,7,8,12'
+  if (!is.null(n)) {
+    h <- sprintf('head -n %d | %s', n, h)
+  }
+  h <- read.table(pipe(h), head=T, sep='\t')
+  names(h) <- tolower(names(h))
+  h <- h %>% rename(chromo=chromosome)
+  h <- h %>% tbl_df
   return (h)
+}
+
+read_report_values <- function(filename, samples=NULL, n=NULL) {
+  h <- 'cut -f 13-'
+  if (!is.null(n)) {
+    h <- sprintf('head -n %d %s | %s', n, filename, h)
+  } else {
+    h <- sprintf('%s %s', h, filename)
+  }
+
+  h <- read.table(pipe(h), head=T, sep='\t')
+  if (!is.null(samples)) {
+    h <- subset(h, select=intersect(colnames(h), samples))
+  }
+  h <- h %>% tbl_df
+  return (h)
+}
+
+read_samples_list <- function(sample_file) {
+  d <- read.table(sample_file, head=F) %>% unlist %>% as.vector
+  return (d)
+}
+
+read_samples_stats <- function(stats_file, samples=NULL) {
+  d <- read.table(opts$samples_stats, sep='\t', head=T) %>%
+    rename(sample=id, cpg_rate=CpG.rate, chh_rate=CHH.rate, cph_rate=CpH.rate) %>%
+    droplevels %>% tbl_df
+  if (!is.null(samples)) {
+    d <- d[d$sample %in% samples,] %>% droplevels
+  }
+  return (d)
+}
+
+plot_pca_vec <- function(pc_vec, x=1, y=2) {
+  t <- data.frame(sample=factor(rownames(pc_vec)),
+    pcx=pc_vec[,x], pcy=pc_vec[,y])
+  p <- ggplot(t, aes(x=pcx, y=pcy)) + geom_point() +
+    geom_text(aes(label=sample), vjust=-.4, hjust= .3, size=3) +
+    xlab(sprintf('pc%d', x)) + ylab(sprintf('pc%d', y)) +
+    guides(color=F) + theme_pub()
+  return (p)
+}
+
+plot_pca_val <- function(pc_val) {
+  t <- data.frame(pc=1:length(pc_val), val=pc_val)
+  p <- ggplot(t, aes(x=pc, y=val)) +
+    geom_bar(stat='identity', fill='salmon', color='black') +
+    xlab('principle component') +
+    ylab('% variance explained') + theme_pub()
+  return (p)
 }

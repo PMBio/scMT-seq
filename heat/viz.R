@@ -50,25 +50,6 @@ to_matrix <- function(d, rowcol=NULL) {
   return (d)
 }
 
-plot_heat <- function(d, xlab='value', col=NULL, col_colors=NULL,
-  labRow=NA, ...) {
-  d <- as.matrix(d)
-  if (is.null(col)) {
-    col <- rev(brewer.pal(9, 'Spectral'))
-    col <- colorRampPalette(col)(50)
-  }
-
-  if (nrow(d) > 500) {
-    dendro='column'
-  } else {
-    dendro = 'both'
-  }
-  p <- heatmap.2(d, density.info='none', trace='none', col=col,
-    keysize=1.0, dendro=dendro, labRow=labRow,
-    lwid=c(2, 5), key.title='', srtCol=45, key.xlab=xlab, ...)
-  return (p)
-}
-
 # select n genes from context with strongest correlation
 data_clust <- function(name_='prom_non_cgi', n=500, genes=F) {
   rs <- dat$rs %>% filter(name == name_) %>% group_by(name, id_.x) %>%
@@ -115,6 +96,25 @@ plot_tracks <- function(d) {
   tm <- plot_track(filter(d, param=='met_var')) +
     scale_fill_gradient(low='white', 'high'='royalblue2', name='var(met)')
   grid.arrange(te, tr, tm, ncol=3)
+}
+
+plot_heat <- function(d, xlab='value', col=NULL, col_colors=NULL,
+  labRow=NA, ...) {
+  d <- as.matrix(d)
+  if (is.null(col)) {
+    col <- rev(brewer.pal(9, 'Spectral'))
+    col <- colorRampPalette(col)(50)
+  }
+
+  if (nrow(d) > 500) {
+    dendro='column'
+  } else {
+    dendro = 'both'
+  }
+  p <- heatmap.2(d, density.info='none', trace='none', col=col,
+    keysize=1.0, dendro=dendro, labRow=labRow,
+    lwid=c(2, 5), key.title='', srtCol=45, key.xlab=xlab, ...)
+  return (p)
 }
 
 plot_heat_expr <- function(dclust, col=NULL) {

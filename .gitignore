@@ -28,8 +28,5 @@ index_*
 *.pptx
 *.ipynb
 
-/data/
+data/
 /zoom/w3*/
-/var/data/
-/clust/data/
-
