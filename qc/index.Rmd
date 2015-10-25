@@ -1,0 +1,61 @@
+---
+title: Samples QC
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F, warning=F, message=F)
+```
+
+```{r, include=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+source('../lib/utils.R')
+```
+
+```{r}
+opts <- list()
+opts$data <- './data.csv'
+opts$use <- c('m14', 'm15P3')
+opts$colors <- c(
+  'm14'='forestgreen',
+  'm15'='brown2',
+  'm15P3'='navyblue'
+  )
+```
+
+```{r}
+d <- read.csv(opts$data, head=T) %>% tbl_df
+names(d) <- c('sample', 'met', 'batch', 'val_trimmed', 'unique_mapped', 'num_cpg', 'per_cpg')
+d$set <- 'm14'
+d[d$batch %in% c('off bead', 'original'),]$set <- 'm15'
+d[d$batch == 'CSCP2',]$set <- 'm15P2'
+d[d$batch == 'optimised',]$set <- 'm15P3'
+d <- d %>% filter(set %in% opts$use) %>%
+  mutate(per_cpg=as.numeric(gsub('%', '', per_cpg)) / 100)
+dat <- d
+```
+
+```{r fig.width=8, fig.height=6}
+p <- ggplot(dat, aes(x=unique_mapped, y=per_cpg, color=set)) +
+  geom_point() +
+  geom_smooth(method='loess', degree=1, alpha=0.2, size=1) +
+  scale_color_manual(values=opts$colors) +
+  xlab('# mapped reads') + ylab('CpG recovery') +
+  theme_pub()
+p
+```
+
+```{r fig.width=8, fig.height=6}
+p <- ggplot(dat, aes(x=val_trimmed, y=per_cpg, color=set)) +
+  geom_point() +
+  geom_smooth(method='loess', degree=1, alpha=0.2, size=1) +
+  scale_color_manual(values=opts$colors) +
+  xlab('# trimmed validated reads') + ylab('CpG recovery') +
+  theme_pub()
+p
+```
