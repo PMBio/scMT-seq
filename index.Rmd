@@ -7,15 +7,17 @@ output:
 
 # Gene-specific
 * [Gene-specific correlation](./gene/index.html)
-* [Random gene-specific correlation](./gene_rnd/index.html)
 * [Robustness gene-specific correlation](./gene_robust/index.html)
-* [Heatmap expression vs. methylation](./heat/index.html)
+* [Correlation with mean methylation](./gene_mean/index.html)
+* [Heatmap expression vs. methylation](./heat/met.html)
 * [Esrrb](./zoom/index.html)
 
 # Sample-specific
 * [Sample-specific correlation](./sample/index.html)
 
-# Supplements
+# QC
+* [Statistics](./qc/index.html)
 * [Clustering](./clust/clust/index.html)
 * [Comparison variability](./var/m14_m15P3/index.html)
+* [Correlation with bulk methylation](./cor_bulk/met/index.html)
 * [CCA](./cca/index.html)
