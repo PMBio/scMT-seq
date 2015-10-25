@@ -25,14 +25,14 @@ opts <- list()
 opts$data_file <- '../data/join/data.rds'
 opts$expr <- '../data/expr/data_proc/data_expr.rds'
 opts$expr_meta <- '../data/expr/data_proc/data_meta.rds'
-opts$met_mean <- '../data/met/mean/data_met.rds'
 opts$genes_file <- '../data/expr/data_raw/subpopulation_lif_genes9.csv'
+opts$samples_stats <- '../data/samples/samples_stats.csv'
+opts$cor_mean <- T
 opts$filter_genes <- F
 opts$alpha <- 0.1
 opts$rnd_trials <- 0
 opts$min_sites <- 10
 opts$cache <- T
-opts$mean <- F
 opts$permute <- F
 opts$num_genes <- 0
 opts$annos <- c()
@@ -90,7 +90,22 @@ if (!is.null(opts$num_genes) && opts$num_genes > 0) {
   dat$em <- dat$em %>% filter(ens_id %in% h)
 }
 dat$em <- dat$em %>% droplevels
+```
 
+
+```{r add_mean, eval=opts$cor_mean}
+s <- read_samples_stats(opts$samples_stats, levels(dat$em$sample)) %>% select(sample, cpg_mean=cpg_rate)
+s <- s %>% gather(name, met, -sample) %>% mutate(weight=1, id_=1, chromo=1, start=1, end=1)
+dat$expr <- readRDS(opts$expr)
+d <- dat$expr %>% inner_join(s, by='sample')
+h <- names(dat$em)
+stopifnot(length(intersect(h, names(d))) == length(h))
+d <- d[,h]
+dat$em <- rbind.data.frame(dat$em, d) %>%
+  mutate(name=factor(name, levels=sort(as.vector(levels(name))))) %>% tbl_df
+```
+
+```{r}
 h <- dat$em %>% group_by(name, id_.x, id_.y) %>% top_n(1, expr) %>% ungroup %>%
   select(id_.x, id_.y, name, ens_id, gene_id, chromo=chromo.x, start.x, end.x, start.y, end.y, strand)
 a <- dat$genes %>% mutate(pluri=T) %>% select(-gene_id)
@@ -98,18 +113,6 @@ h <- h %>% left_join(a, by='ens_id')
 h[is.na(h$pluri),]$pluri <- F
 dat$em_meta <- h
 dat$em_meta <- dat$em_meta %>% droplevels
-```
-
-
-```{r add_mean, eval=opts$mean}
-dat$expr <- readRDS(opts$expr)
-dat$met_mean <- readRDS(opts$met_mean)
-d <- dat$expr %>% inner_join(dat$met_mean, by='sample') %>% mutate(name='mean')
-h <- names(dat$em)
-stopifnot(length(intersect(h, names(d))) == length(h))
-d <- d[,h]
-dat$em <- rbind.data.frame(dat$em, d) %>%
-  mutate(name=factor(name, levels=sort(as.vector(levels(name))))) %>% tbl_df
 ```
 
 ```{r cor_rnd, eval=opts$rnd_trials > 0, cache=opts$cache}
@@ -242,7 +245,7 @@ p <- ggplot(cmp$rs, aes(x=name, y=r, fill=name)) +
 print(p)
 ```
 
-```{r fig.width=10, fig.height=14}
+```{r fig.width=10, fig.height=16}
 d <- cmp$rs
 d <- d %>% mutate(
   pluri=factor(pluri, levels=c(F, T), labels=c('no', 'yes')),
@@ -395,6 +398,17 @@ tab_data <- function(d) {
 
 ```{r}
 opts_chunk$set(fig.width=10, fig.height=6)
+```
+
+### CpG mean
+
+```{r}
+d <- select_sites('cpg_mean')
+plot_sites(d$em)
+```
+
+```{r results='asis'}
+print(xtable(tab_data(d$r), digits=2))
 ```
 
 ### Exons
