@@ -1,5 +1,5 @@
 ---
-title: Joint clustering scBS14 and scBS15
+title: Joint clustering
 date: 151019
 output:
   html_document:
@@ -23,6 +23,11 @@ library(corrplot)
 library(ggdendro)
 library(grid)
 library(stringr)
+library(xtable)
+```
+
+```{r}
+options(xtable.type='html')
 ```
 
 # Notation
@@ -33,6 +38,8 @@ library(stringr)
 
 ```{r}
 opts <- list()
+opts$use <- c('m14', 'm15P3', 'ficz')
+
 opts$m14$met_file <- '../data/14/prepro/gene_body/data_met.rds'
 opts$m14$meta_file <- '../data/14/prepro/gene_body/data_meta.rds'
 
@@ -122,7 +129,7 @@ dat$m14$met <- select(dat$m14$meta, c(id_, ens_id=id, feature)) %>%
   ungroup
 ```
 
-```{r read_m15}
+```{r read_m15, eval=opts$use_m15}
 m15_bulk <- function(d) {
   d <- d %>% group_by(chromo, start, end, id_) %>%
     summarise(
@@ -175,7 +182,7 @@ dat$ficz$met <- select(dat$ficz$meta, c(id_, ens_id=id, feature)) %>%
   ungroup
 ```
 
-```{r samples}
+```{r m14_samples}
 m14_samples <- function(s) {
   s <- as.vector(s)
   d <- list()
@@ -187,7 +194,11 @@ m14_samples <- function(s) {
   d$label <- paste(d$set, d$label, sep='_')
   return (as.data.frame(d))
 }
+dat$m14$samples <- m14_samples(levels(dat$m14$met$sample))
+```
 
+
+```{r m15_samples}
 m15_samples <- function(s) {
   s <- as.vector(s)
   d <- list()
@@ -198,7 +209,10 @@ m15_samples <- function(s) {
   d$label <- paste(d$set, d$label, sep='_')
   return (as.data.frame(d))
 }
+dat$m15$samples <- m15_samples(levels(dat$m15$met$sample))
+```
 
+```{r m15P3_samples}
 m15P3_samples <- function(s) {
   s <- as.vector(s)
   d <- list()
@@ -210,7 +224,11 @@ m15P3_samples <- function(s) {
   d$label <- paste(d$set, d$label, sep='_')
   return (as.data.frame(d))
 }
+dat$m15P3$samples <- m15P3_samples(levels(dat$m15P3$met$sample))
+```
 
+
+```{r ficz_samples}
 ficz_samples <- function(s) {
   d <- list()
   s <- as.vector(s)
@@ -221,14 +239,12 @@ ficz_samples <- function(s) {
   d$label <- paste(d$set, d$label, sep='_')
   return (as.data.frame(d))
 }
-
-dat$m14$samples <- m14_samples(levels(dat$m14$met$sample))
-dat$m15$samples <- m15_samples(levels(dat$m15$met$sample))
-dat$m15P3$samples <- m15P3_samples(levels(dat$m15P3$met$sample))
 dat$ficz$samples <- ficz_samples(levels(dat$ficz$met$sample))
+```
 
+```{r join_samples}
 d <- list()
-for (n in c('m14', 'm15', 'm15P3', 'ficz')) {
+for (n in c(opts$use)) {
   d[[length(d) + 1]] <- dat[[n]]$samples
 }
 d <- do.call(rbind.data.frame, d) %>% tbl_df
@@ -237,18 +253,6 @@ d$stype <- paste(d$set, d$type, sep='_')
 d[d$bulk, 'stype'] <- paste(d[d$bulk,]$stype, 'bulk', sep='_')
 d <- d %>% mutate(stype=factor(stype))
 dat$samples <- d
-```
-
-```{r eval=F}
-dat$m14$samples %>% group_by(type) %>% summarise(n=n())
-dat$m15$samples %>% group_by(type) %>% summarise(n=n())
-dat$m15P3$samples %>% group_by(type) %>% summarise(n=n())
-```
-
-```{r}
-d <- dat$samples
-h <- grepl('bulk', as.vector(d$sample))
-h <- d[h,]
 ```
 
 ```{r join, cache=opts$cache}
@@ -263,12 +267,12 @@ stopifnot(min_cov(dat$m15$met) >= 0.5)
 stopifnot(min_cov(dat$m15P3$met) >= 0.4)
 
 g <- as.vector(unique(dat$m14$met$ens_id))
-for (n in c('m15', 'm15P3', 'ficz')) {
+for (n in c(opts$use)) {
   g <- intersect(g, as.vector(unique(dat[[n]]$met$ens_id)))
 }
 
 d <- list()
-for (n in c('m14', 'm15', 'm15P3', 'ficz')) {
+for (n in c(opts$use)) {
   h <- dat[[n]]$met
   h <- h %>% filter(ens_id %in% g)
   h$ens_id <- droplevels(h$ens_id)
@@ -356,6 +360,14 @@ p1
 ```{r}
 p2 <- plot_pca_val(cmp$pca$val)
 p2
+```
+
+```{r results='asis'}
+h <- cmp$pca$val[1:5]
+names(h) <- sapply(1:length(h), function(x) sprintf('pc%d', x))
+h <- t(data.frame(h))
+rownames(h) <- '% variance'
+xtable(h, digits=3)
 ```
 
 
