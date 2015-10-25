@@ -1,0 +1,112 @@
+---
+title: Correlation methylation scM&T and Ficz
+date: 151022
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F, warning=F, message=F)
+```
+
+```{r, include=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+source('./src.R')
+source('./../../lib/utils.R')
+```
+
+```{r}
+opts <- list()
+opts$met1_file <- 'data/ficz/rates.txt'
+opts$met2_file <- 'data/m15P3/rates.txt'
+opts$met3_file <- 'data/m14/rates.txt'
+opts$met2_samples_file <- './data/m15P3/samples/samples.csv'
+opts$nrow <- 10000000
+opts$cache <- T
+```
+
+```{r}
+dat <- list()
+```
+
+```{r read_met1, cache=opts$cache}
+dat$met1 <- read_values(opts$met1_file, n=opts$nrow) %>% unlist
+names(dat$met1) <- NULL
+```
+
+```{r read_met2, cache=opts$cache}
+read_samples <- function(filename) {
+  h <- read.table(filename, sep='\t', head=F) %>% tbl_df
+  colnames(h) <- c('id')
+  h <- as.vector(h$id)
+  return (h)
+}
+
+samples <- read_samples(opts$met2_samples_file)
+dat$met2 <- read_values(opts$met2_file, samples=samples, n=opts$nrow) %>%
+  rowMeans(na.rm=T)
+```
+
+```{r cache=opts$cache}
+dat$met3 <- read_values(opts$met3_file, n=opts$nrow) %>%
+  rowMeans(na.rm=T)
+```
+
+```{r}
+stopifnot(length(dat$met1) == length(dat$met2))
+stopifnot(length(dat$met1) == length(dat$met3))
+d <- data.frame(ficz=dat$met1, m15=dat$met2, m14=dat$met3) %>% tbl_df
+d <- d[!(rowSums(is.na(d)) == ncol(d)),]
+dat$met <- d
+```
+
+```{r}
+r <- cor(dat$met, use='complete.obs')
+r
+```
+
+```{r}
+plot_cor <- function(name, nmax=50000) {
+  d <- data.frame(x=dat$met$ficz, y=dat$met[[name]])
+  d <- d[complete.cases(d),]
+  if (nrow(d) > nmax) {
+    d <- d[sample(nrow(d), nmax),]
+  }
+  p <- ggplot(d, aes(x=x, y=y)) +
+    geom_abline(slope=1, linetype='dashed') +
+    geom_point(color='blue', size=0.3) +
+    xlab('Ficz') + ylab(name) + theme_pub()
+  return (p)
+}
+```
+
+```{r fig.width=8, fig.height=8}
+plot_cor('m15')
+```
+
+```{r fig.width=8, fig.height=8}
+plot_cor('m14')
+```
+
+```{r}
+nmax <- 50000
+d <- dat$met %>% gather(set, value, -ficz)
+d <- d[complete.cases(d),]
+d <- d %>% group_by(set) %>% sample_n(nmax) %>% ungroup
+d <- d %>% mutate(set=factor(set, levels=c('m15', 'm14'), labels=c('scM&T', 'scBS14')))
+```
+
+```{r fig.width=8, fig.height=8}
+h <- d %>% mutate(set=as.vector(set)) %>% arrange(set)
+colors <- c('scBS14'='green4', 'scM&T'='royalblue')
+p <- ggplot(h, aes(x=ficz, y=value)) +
+  geom_abline(slope=1, linetype='dashed') +
+  geom_point(aes(color=set), size=0.6) +
+  scale_color_manual(values=colors) +
+  xlab('% methylation Ficz') + ylab('% methylation single-cell') + theme_pub()
+print(p)
+```

@@ -1,0 +1,57 @@
+---
+title: Correlation expression scM&T and Ficz
+date: 151022
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F, warning=F, message=F)
+```
+
+```{r, include=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+```
+
+```{r}
+opts <- list()
+opts$file1 <- 'data/ficz/counts.csv'
+opts$file2 <- 'data/m15P3/bsr3.csv'
+```
+
+```{r}
+dat <- list()
+```
+
+```{r}
+d <- read.table(opts$file1, head=T) %>% tbl_df
+names(d) <- c('ens_id', 'bulk')
+dat$e1 <- d
+```
+
+```{r}
+d <- read.table(opts$file2, head=T) %>% tbl_df
+d <- d %>% gather(sample, expr, -ens_id)
+d <- d %>% group_by(ens_id) %>% summarise(bulk=mean(expr))
+dat$e2 <- d
+```
+
+```{r}
+dat$e <- dat$e1 %>% inner_join(dat$e2, by='ens_id')
+```
+
+```{r}
+ggplot(dat$e, aes(x=bulk.x, y=bulk.y)) + geom_point(size=0.5) +
+  xlim(0, 1000) + ylim(0, 1000)
+```
+
+```{r}
+cor(dat$e$bulk.x, dat$e$bulk.y)
+```
+
+
+
