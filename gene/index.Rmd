@@ -207,10 +207,17 @@ cmp$rs <- cmp$r %>% group_by(name) %>% summarise(
   sig_pos=sum(p_adj <= opts$alpha & r > 0),
   sig_neg=sum(p_adj <= opts$alpha & r < 0)
   ) %>% ungroup %>% arrange(desc(name))
+h <- cmp$rs %>% summarise(name='Total', r_mean=mean(r_mean), n=sum(n), sig=sum(sig), sig_pos=sum(sig_pos), sig_neg=sum(sig_neg))
+cmp$rs <- rbind.data.frame(cmp$rs, h) %>%
+  select(name, n, r_mean, sig, sig_pos, sig_neg)
 ```
 
 ```{r results='asis'}
 print(xtable(cmp$rs, digits=2))
+```
+
+```{r eval=F}
+write.table(cmp$rs, file='tab_gene_stats.csv', sep='\t', row.names=F)
 ```
 
 ```{r fig.height=8}
@@ -228,7 +235,6 @@ ggplot(d, aes(x=name, y=n, fill=name)) + geom_bar(stat='identity') +
 
 
 ```{r}
-
 cmp$rs <- cmp$r
 if (length(opts$annos)) {
   cmp$rs <- cmp$rs %>% filter(name %in% opts$annos) %>%
@@ -243,6 +249,10 @@ p <- ggplot(cmp$rs, aes(x=name, y=r, fill=name)) +
   theme_pub() +
   xlab('') + ylab('\nPearson correlation') + coord_flip() + guides(fill=F)
 print(p)
+```
+
+```{r eval=F}
+ggsave(p, file='fig_gene_r.pdf', width=8, height=9)
 ```
 
 ```{r fig.width=10, fig.height=16}
@@ -277,6 +287,84 @@ p <- ggplot(d, aes(x=r, y=-log10(p_adj), size=-log10(p_adj))) +
   guides(color=F, size=F) +
   ylim(0, 3.9)
 print(p)
+```
+
+```{r fig.width=10, fig.height=16, eval=F}
+sel <- c('cpg_mean', 'gene_body', 'prom_non_cgi', 'Wu_Tet1', 'LMR', 'p300')
+d <- cmp$rs %>% filter(name %in% sel)
+d <- d %>% mutate(
+  pluri=factor(pluri, levels=c(F, T), labels=c('no', 'yes')),
+  name=factor(name, levels=rev(levels(name)))
+  )
+h <- d %>% group_by(name) %>% top_n(5, 1-p_adj) %>% ungroup %>% select(name, id_.x, id_.y) %>% mutate(topn=T)
+d <- d %>% left_join(h, by=c('name', 'id_.x', 'id_.y'))
+d[is.na(d$topn), 'topn'] <- F
+ds <- d %>% group_by(name) %>% summarise(r=mean(r, na.rm=T)) %>% ungroup %>%
+  arrange(abs(r)) %>% mutate(name=factor(name, levels=name))
+# d <- d %>% mutate(name=factor(name, rev(levels(ds$name))))
+
+p <- ggplot(d, aes(x=r, y=-log10(p_adj), size=-log10(p_adj))) +
+  geom_vline(xintercept=0, linetype='dashed', color='darkgrey') +
+  geom_vline(data=ds, aes(xintercept=r), color='orange') +
+  geom_hline(yintercept=-log10(opts$alpha), color='blue') +
+  facet_wrap(~name, ncol=3) +
+  scale_color_manual(values=c('no'='black', 'yes'='red3')) +
+  geom_point(aes(color=pluri)) +
+  geom_point(data=(d %>% filter(pluri=='yes')), color='red') +
+  geom_text(data=(d %>% filter(topn == T | (pluri == 'yes' & p_adj <= opts$alpha))), aes(label=gene_id, color=pluri),
+    vjust=-0.0, hjust=-0.4) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background=element_rect(fill='transparent'),
+    panel.margin = unit(1, "lines")
+    ) +
+  guides(color=F, size=F) +
+  ylim(0, 3.9) +
+  xlab('Pearson correlation') + ylab('log P-value')
+
+ggsave(p, file='fig_volcano.pdf', width=12, height=7)
+s <- d %>% group_by(name) %>% summarise(
+  sig_pos=sum(r >= 0 & p_adj <= opts$alpha),
+  sig_neg=sum(r < 0 & p_adj <= opts$alpha))
+write.table(s, file='fig_volcano.txt', sep='\t')
+```
+
+```{r fig.width=10, fig.height=16, eval=F}
+d <- cmp$rs %>% filter(name != 'IAP')
+d <- d %>% mutate(
+  name=factor(name, levels=rev(levels(name))),
+  pluri=factor(pluri, levels=c(F, T), labels=c('no', 'yes'))
+  )
+h <- d %>% group_by(name) %>% top_n(5, 1-p_adj) %>% ungroup %>% select(name, id_.x, id_.y) %>% mutate(topn=T)
+d <- d %>% left_join(h, by=c('name', 'id_.x', 'id_.y'))
+d[is.na(d$topn), 'topn'] <- F
+ds <- d %>% group_by(name) %>% summarise(r=mean(r, na.rm=T)) %>% ungroup %>%
+  arrange(abs(r)) %>% mutate(name=factor(name, levels=name))
+# d <- d %>% mutate(name=factor(name, rev(levels(ds$name))))
+
+p <- ggplot(d, aes(x=r, y=-log10(p_adj), size=-log10(p_adj))) +
+  geom_vline(xintercept=0, linetype='dashed', color='darkgrey') +
+  geom_vline(data=ds, aes(xintercept=r), color='orange') +
+  geom_hline(yintercept=-log10(opts$alpha), color='blue') +
+  facet_wrap(~name, ncol=3) +
+  scale_color_manual(values=c('no'='black', 'yes'='red3')) +
+  geom_point(aes(color=pluri)) +
+  geom_point(data=(d %>% filter(pluri=='yes')), color='red') +
+  geom_text(data=(d %>% filter(topn == T | (pluri == 'yes' & p_adj <= opts$alpha))), aes(label=gene_id, color=pluri),
+    vjust=-0.0, hjust=-0.4) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background=element_rect(fill='transparent'),
+    panel.margin = unit(1, "lines")
+    ) +
+  guides(color=F, size=F) +
+  ylim(0, 3.9) +
+  xlab('Pearson correlation') + ylab('log P-value')
+p
+
+ggsave(p, file='fig_volcano_all.pdf', width=10, height=14)
 ```
 
 ```{r results='asis'}
@@ -495,10 +583,14 @@ print(xtable(tab_data(d$r), digits=2))
 
 
 
-```{r eval=T}
+```{r eval=F}
 h <- cmp$r %>%
   select(-id_.x, -id_.y) %>%
+  rename(
+    start_gene=start.x, end_gene=end.x,
+    start_context=start.y, end_context=end.y
+  ) %>%
   arrange(as.vector(name), desc(abs(r)))
 
-write.table(h, file='r.csv', sep='\t', row.names=F, quote=F)
+write.table(h, file='tab_r.csv', sep='\t', row.names=F, quote=F)
 ```

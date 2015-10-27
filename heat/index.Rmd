@@ -38,7 +38,7 @@ opts$n <- 300
 opts$clust <- list()
 opts$clust$c1 <- c('C05', 'B05', 'D05', 'E01', 'H03', 'E09', 'C07', 'F01', 'B10', 'F07', 'C02', 'B07')
 opts$clust$c2 <- c('G02', 'E07', 'F03', 'C03', 'A07', 'C01', 'A06', 'A04', 'A02', 'A03', 'G07', 'C10', 'H01', 'D01', 'G09', 'E05', 'G01')
-opts$clust_colors <- c('default'='forestgreen', 'c1'='navyblue', 'c2'='brown1')
+opts$clust_colors <- c('default'='#fdc086', 'c1'='#7fc97f', 'c2'='#beaed4')
 ```
 
 ```{r read}
@@ -90,6 +90,12 @@ pm <- plot_heat_met(dclust)
 ```
 
 ```{r eval=F}
+pdf(file='fig_heat_met.pdf', width=10, height=10)
+pm <- plot_heat_met(dclust)
+dev.off()
+```
+
+```{r eval=F}
 col_names(dclust$m, pm)
 ```
 
@@ -97,6 +103,18 @@ col_names(dclust$m, pm)
 pe <- plot_heat_expr(dclust, Rowv=pm$rowDendrogram)
 ```
 
+```{r eval=F}
+pdf(file='fig_heat_expr.pdf', width=10, height=10)
+pe <- plot_heat_expr(dclust, Rowv=pm$rowDendrogram)
+dev.off()
+```
+
 ```{r fig.height=10, fig.width=1.5}
 plot_tracks(data_track(dclust, pm))
+```
+
+```{r eval=F}
+pdf(file='fig_heat_tracks.pdf', width=1.5, height=10)
+plot_tracks(data_track(dclust, pm))
+dev.off()
 ```

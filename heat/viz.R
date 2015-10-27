@@ -41,8 +41,9 @@ plot_heat <- function(d, xlab='value', col=NULL, col_colors=NULL,
   col_colors <- samples_colors(colnames(d))
 
   p <- heatmap.2(d, density.info='none', trace='none', col=col,
-    keysize=1.0, dendro=dendro, labRow=labRow,
+    keysize=0.5, dendro=dendro, labRow=labRow,
     ColSideColors=col_colors,
+    lhei=c(2,9),
     lwid=c(2, 5), key.title='', srtCol=45, key.xlab=xlab, ...)
   return (p)
 }

@@ -44,28 +44,6 @@ dat$var <- dat$var %>% group_by(data, name) %>%
   mutate(wtd_var_s=wtd_var/sd(wtd_var, na.rm=T)) %>% ungroup
 ```
 
-```{r}
-theme_pub <- function() {
-  p <- theme(
-    axis.text=element_text(size=rel(1.2), color='black'),
-    axis.title=element_text(size=rel(1.5)),
-    legend.position='top',
-    legend.text=element_text(size=rel(1.2)),
-    legend.title=element_text(size=rel(1.2)),
-    legend.key=element_rect(fill='transparent'),
-    panel.border=element_blank(),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    panel.background = element_blank(),
-    axis.line = element_line(colour="black", size=1),
-    axis.ticks.length = unit(.3, 'cm'),
-    axis.ticks.margin = unit(.3, 'cm')
-    )
-  return (p)
-}
-```
-
-
 ## Weighted variance
 
 
@@ -74,14 +52,14 @@ d <- dat$var %>% filter(name %in% opts$annos) %>%
   mutate(name=factor(name, levels=rev(opts$annos)))
 p <- ggplot(d, aes(x=name, fill=data, y=wtd_var)) + geom_boxplot() +
   scale_fill_manual(values=opts$colors) +
-  xlab('') + ylab('\nWeighted variance') + coord_flip() +
+  xlab('') + ylab('\nVariance') + coord_flip() +
   theme_pub() + ylim(0, 1300) +
   theme(legend.position='right')
 print(p)
 ```
 
 ```{r eval=F}
-ggsave('var.pdf', p, width=8, height=12)
+ggsave('fig_var.pdf', p, width=8, height=9)
 ```
 
 

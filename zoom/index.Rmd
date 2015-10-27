@@ -34,7 +34,7 @@ opts$em_file <- '../data/join/data.rds'
 opts$expr$rate_file <- '../data/expr/data_proc/data_expr.rds'
 opts$expr$meta_file <- '../data/expr/data_proc/data_meta.rds'
 opts$sample_filter <- c()
-opts$init <- F
+opts$init <- T
 ```
 
 ```{r read, eval=opts$init}
@@ -64,7 +64,7 @@ cmp$r <- readRDS('../gene/r.rds')
 viz <- list()
 viz$sel <- cmp$r %>%
   filter(name %in% c('LMR', 'p300'), gene_id == 'Esrrb', p_adj < 0.1) %>%
-  arrange(r) %>% head(10) %>%
+  arrange(r) %>% head(2) %>%
   select(ens_id, gene_id, name, id_.x, id_.y, r, p, p_adj, chromo, start.x, end.x, start.y, end.y)
 idx <- viz$sel[1,]$id_.x
 ```
@@ -81,6 +81,7 @@ for (i in 1:nrow(viz$sel)) {
   v <- viz$sel[i,]
   a[[sprintf('%s_%d', v$name, i)]] <- c(v$start.y, v$end.y)
 }
+
 viz$da <- data_anno(a)
 
 viz$a <- plot_anno(viz$da)
@@ -100,7 +101,30 @@ xtable(viz$sel, digits=4)
 ```{r scatter, fig.width=6, fig.height=6}
 for (i in 1:nrow(viz$sel)) {
   v <- viz$sel[i,]
-  print(plot_scatter(v$name, v$id_.x, v$id_.y))
+  print(plot_scatter(as.character(v$name), v$id_.x, v$id_.y))
 }
 ```
 
+
+```{r}
+opts_chunk$set(eval=F)
+```
+
+```{r}
+pdf(file='fig_esrrb.pdf', width=18, height=10)
+grid.arrange(viz$v, viz$r, viz$m, nrow=3, heights=c(0.25, 0.25, 0.5))
+dev.off()
+```
+
+```{r}
+s <- viz$sel %>% select(ens_id, gene_id, name, chromo, start=start.y, end=end.y, r, p_value=p_adj)
+write.table(s, file='fig_esrrb.csv', sep='\t')
+```
+
+```{r}
+for (i in 1:nrow(viz$sel)) {
+  v <- viz$sel[i,]
+  p <- plot_scatter(v$name, v$id_.x, v$id_.y)
+  ggsave(p, file=sprintf('fig_esrrb_%d.pdf', i), width=6.5, height=6)
+}
+```

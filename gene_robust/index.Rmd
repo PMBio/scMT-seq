@@ -174,6 +174,7 @@ cmp$st <- d %>% group_by(name, keep, trial) %>%
   summarise(
     mse=mean(sqrt((r.x - r.y)**2), na.rm=T),
     mad=mean(abs(r.x - r.y), na.rm=T),
+    sig=sum(p_adj.y <= opts$alpha) - sum(p_adj.x <= opts$alpha),
     sig_pos=sum(p_adj.y <= opts$alpha & r.y > 0) - sum(p_adj.x <= opts$alpha & r.x > 0),
     sig_neg=sum(p_adj.y <= opts$alpha & r.y < 0) - sum(p_adj.x <= opts$alpha & r.x < 0)
     ) %>% ungroup %>%
@@ -188,6 +189,7 @@ cmp$s <- cmp$st %>% group_by(name, keep) %>% select(-trial) %>%
     mse_min=min(mse),
     mse_max=max(mse),
     mse_sd=sd(mse),
+    sig_mean=mean(sig),
     sig_pos_mean=mean(sig_pos),
     sig_pos_min=min(sig_pos),
     sig_pos_max=max(sig_pos),
@@ -195,6 +197,8 @@ cmp$s <- cmp$st %>% group_by(name, keep) %>% select(-trial) %>%
     sig_neg_min=min(sig_neg),
     sig_neg_max=max(sig_neg)
     ) %>% ungroup %>% arrange(name, keep)
+cmp$s <- cmp$s %>%
+  mutate(keep=factor(keep), name=factor(name, levels=rev(levels(name))))
 ```
 
 ```{r}
@@ -217,13 +221,27 @@ ggplot(d, aes(x=r.x, y=r.y, color=keep)) +
 ```
 
 ```{r fig.width=8, fig.height=7}
-d <- cmp$s %>%
-  mutate(keep=factor(keep), name=factor(name, levels=rev(levels(name))))
-ggplot(d, aes(x=name, y=mse_mean)) +
+p <- ggplot(cmp$s, aes(x=name, y=mse_mean)) +
   geom_bar(aes(fill=keep), stat='identity', position='dodge') +
-  xlab('') + ylab('Mean Squared Error') +
+  xlab('') + ylab('RMSE from all cells') +
+  guides(fill=guide_legend(title='Fraction of cels')) +
   coord_flip() +
   theme_pub()
+print(p)
+```
+
+```{r eval=F}
+ggsave(p, file='fig_rmse.pdf', width=8, height=7)
+```
+
+```{r fig.width=8, fig.height=7}
+p <- ggplot(cmp$s, aes(x=name, y=sig_mean)) +
+  geom_bar(aes(fill=keep), stat='identity', position='dodge') +
+  xlab('') + ylab('Reduction in # significant correlations') +
+  guides(fill=guide_legend(title='Fraction of cels')) +
+  coord_flip() +
+  theme_pub()
+print(p)
 ```
 
 ```{r results='asis'}

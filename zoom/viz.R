@@ -18,6 +18,7 @@ theme_pub <- function() {
 }
 
 plot_scatter <- function(name_, id_.x_, id_.y_, legend=F) {
+  name_ <- as.character(name_)
   d <- dat$em$all %>% filter(name == name_, id_.x == id_.x_, id_.y == id_.y_)
   dm <- d[1,]
   rc <- cmp$r %>% filter(id_.x==id_.x_, id_.y==id_.y_)

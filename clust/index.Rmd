@@ -24,6 +24,7 @@ library(ggdendro)
 library(grid)
 library(stringr)
 library(xtable)
+source('../lib/utils.R')
 ```
 
 ```{r}
@@ -40,15 +41,15 @@ options(xtable.type='html')
 opts <- list()
 opts$use <- c('m14', 'm15P3', 'ficz')
 
-opts$m14$met_file <- '../data/14/prepro/gene_body/data_met.rds'
-opts$m14$meta_file <- '../data/14/prepro/gene_body/data_meta.rds'
+opts$m14$met_file <- './data/14/prepro/gene_body/data_met.rds'
+opts$m14$meta_file <- './data/14/prepro/gene_body/data_meta.rds'
 
-opts$m15$met_file <- '../data/15/prepro/gene_body/data_met.rds'
-opts$m15$meta_file <- '../data/15/prepro/gene_body/data_meta.rds'
+opts$m15$met_file <- './data/15/prepro/gene_body/data_met.rds'
+opts$m15$meta_file <- './data/15/prepro/gene_body/data_meta.rds'
 opts$m15$excl <- c('CSC4_7E')
 
-opts$m15P3$met_file <- '../data/15P3/prepro/gene_body/data_met.rds'
-opts$m15P3$meta_file <- '../data/15P3/prepro/gene_body/data_meta.rds'
+opts$m15P3$met_file <- './data/15P3/prepro/gene_body/data_met.rds'
+opts$m15P3$meta_file <- './data/15P3/prepro/gene_body/data_meta.rds'
 opts$m15P3$excl <- c(
   'CSCP3_SERUM_A01',
   'CSCP3_SERUM_C06',
@@ -62,45 +63,24 @@ opts$m15P3$excl <- c(
   'CSCP3_SERUM_H06',
   'CSCP3_SERUM_H07')
 
-opts$ficz$met_file <- '../data/ficz/prepro/gene_body/data_met.rds'
-opts$ficz$meta_file <- '../data/ficz/prepro/gene_body/data_meta.rds'
+opts$ficz$met_file <- './data/ficz/prepro/gene_body/data_met.rds'
+opts$ficz$meta_file <- './data/ficz/prepro/gene_body/data_meta.rds'
 
 opts$colors <- c(
   'bs_2i'='springgreen1',
   'bs_serum'='forestgreen',
   'bs_2i_bulk'='chartreuse',
-  'bs_serum_bulk'='aquamarine4',
+  'bs_serum_bulk'='green3',
   'mt_serum'='brown2',
   'mt_serum_bulk'='brown',
   'mt3_2i'='royalblue',
   'mt3_serum'='navyblue',
   'mt3_2i_bulk'='steelblue1',
-  'mt3_serum_bulk'='steelblue',
+  'mt3_serum_bulk'='blue',
   'ficz_serum_bulk'='orange1'
   )
 
 opts$cache <- F
-```
-
-```{r}
-theme_pub <- function() {
-  p <- theme(
-    axis.text=element_text(size=rel(1.2), color='black'),
-    axis.title=element_text(size=rel(1.5)),
-    legend.position='top',
-    legend.text=element_text(size=rel(1.2)),
-    legend.title=element_text(size=rel(1.2)),
-    legend.key=element_rect(fill='transparent'),
-    panel.border=element_blank(),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    panel.background = element_blank(),
-    axis.line = element_line(colour="black", size=1),
-    axis.ticks.length = unit(.3, 'cm'),
-    axis.ticks.margin = unit(.3, 'cm')
-    )
-  return (p)
-}
 ```
 
 ```{r}
@@ -321,10 +301,11 @@ plot_pca_vec <- function(pc_vec, x=1, y=2) {
   t <- data.frame(sample=factor(rownames(pc_vec)),
     pcx=pc_vec[,x], pcy=pc_vec[,y])
   t <- t %>% left_join(dat$samples, by='sample')
-  p <- ggplot(t, aes(x=pcx, y=pcy)) +
-    geom_point(aes(color=stype, shape=type, size=bulk)) +
+  p <- ggplot(filter(t, !bulk), aes(x=pcx, y=pcy)) +
+    geom_point(aes(color=stype, shape=type), size=3) +
+    geom_point(data=filter(t, bulk), aes(x=pcx, y=pcy, fill=stype), pch=21, size=6, color='black') +
     scale_color_manual(values=opts$colors) +
-    scale_size_discrete(range=c(3, 5)) +
+    scale_fill_manual(values=opts$colors) +
     # geom_text(aes(label=label), vjust=-.4, hjust= .3, size=3) +
     xlab(sprintf('\npc%d', x)) + ylab(sprintf('pc%d\n', y)) +
     theme_pub() +
@@ -355,6 +336,15 @@ cmp$pca <- pca(impute(d), scale=F)
 ```{r fig.width=10, fig.height=9}
 p1 <- plot_pca_vec(cmp$pca$vec)
 p1
+```
+
+```{r}
+p <- p1 + xlab('PC 1 (48 %)') + ylab('PC 2 (3 %)') +
+  theme(
+    axis.title.y=element_text(vjust=1.5),
+    axis.title.x=element_text(vjust=-0.2)
+    )
+ggsave(p, file='fig_pca.pdf', width=8, height=8)
 ```
 
 ```{r}

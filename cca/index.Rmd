@@ -36,7 +36,7 @@ opts$pca_on <- 'gene_body'
 opts$clust <- list()
 opts$clust$c1 <- c('H03', 'C05', 'C07', 'B09', 'F07', 'C02', 'D05', 'E09', 'F01', 'B05', 'H10', 'E01', 'B10')
 opts$clust$c2 <- c('F06', 'D07', 'G09', 'G03')
-opts$clust_colors <- c('default'='forestgreen', 'c1'='navyblue', 'c2'='brown1')
+opts$clust_colors <- c('default'='#fdc086', 'c1'='#7fc97f', 'c2'='brown1')
 
 samples_colors <- function(x) {
   h <- rep(opts$clust_colors['default'], length(x))
@@ -45,27 +45,6 @@ samples_colors <- function(x) {
   }
   names(h) <- x
   return (h)
-}
-```
-
-```{r}
-theme_pub <- function() {
-  p <- theme(
-    axis.text=element_text(size=rel(1.2), color='black'),
-    axis.title=element_text(size=rel(1.5)),
-    legend.position='top',
-    legend.text=element_text(size=rel(1.2)),
-    legend.title=element_text(size=rel(1.2)),
-    legend.key=element_rect(fill='transparent'),
-    panel.border=element_blank(),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    panel.background = element_blank(),
-    axis.line = element_line(colour="black", size=1),
-    axis.ticks.length = unit(.3, 'cm'),
-    axis.ticks.margin = unit(.3, 'cm')
-    )
-  return (p)
 }
 ```
 
@@ -92,8 +71,9 @@ dat$met <- readRDS(opts$met$file) %>%
 plot_pca_vec <- function(pc_vec, x=1, y=2) {
   t <- data.frame(sample=factor(rownames(pc_vec)),
     pcx=pc_vec[,x], pcy=pc_vec[,y])
-  t$color <- samples_colors(as.vector(t$sample))
-  p <- ggplot(t, aes(x=pcx, y=pcy)) + geom_point(aes(color=color)) +
+  cols <- samples_colors(as.vector(t$sample))
+  p <- ggplot(t, aes(x=pcx, y=pcy)) + geom_point(aes(color=sample), size=2) +
+    scale_color_manual(values=cols) +
     geom_text(aes(label=sample), vjust=-.4, hjust= .3, size=3) +
     xlab(sprintf('pc%d', x)) + ylab(sprintf('pc%d', y)) +
     guides(color=F) + theme_pub()
@@ -129,11 +109,21 @@ pe <- pca(e)
 ```
 
 ```{r fig.width=6, fig.height=6}
-print(plot_pca_vec(pe$vec))
+p <- plot_pca_vec(pe$vec)
+p
+```
+
+```{r eval=F}
+ggsave(p, file='fig_pca_expr.pdf', width=7, height=6)
 ```
 
 ```{r fig.width=6, fig.height=4}
-print(plot_pca_val(pe$val))
+p <- plot_pca_val(pe$val)
+p
+```
+
+```{r eval=F}
+ggsave(p, file='fig_pca_expr_var.pdf', width=7, height=6)
 ```
 
 ## PCA methylation
@@ -146,11 +136,21 @@ pm <- pca(mi)
 ```
 
 ```{r fig.width=6, fig.height=6}
-print(plot_pca_vec(pm$vec))
+p <- plot_pca_vec(pm$vec)
+p
+```
+
+```{r eval=F}
+ggsave(p, file='fig_pca_expr.pdf', width=7, height=6)
 ```
 
 ```{r fig.width=6, fig.height=4}
-print(plot_pca_val(pm$val))
+p <- plot_pca_val(pm$val)
+p
+```
+
+```{r eval=F}
+ggsave(p, file='fig_pca_met_var.pdf', width=7, height=6)
 ```
 
 ## Comparison PCAs
@@ -199,10 +199,11 @@ pcs <- de %>% inner_join(dm, by='sample') %>%
 ```{r fig.height=10}
 n <- 5
 d <- pcs %>% filter(pce <= n, pcm <= 5, pce > 1, pcm > 1)
-d$color <- samples_colors(as.vector(d$sample))
+cols <- samples_colors(as.vector(d$sample))
 p <- ggplot(d, aes(x=met, y=expr)) +
   stat_smooth(method=lm, color='black') +
-  geom_point(aes(color=color), size=2) +
+  geom_point(aes(color=sample), size=1.5) +
+  scale_color_manual(values=cols) +
   xlab('Methylation PC') + ylab('Expression PC') +
   facet_grid(pce~pcm) +
   guides(color=F)
@@ -216,10 +217,11 @@ ggsave('cor_pc_scatter.pdf', p, width=10, height=10)
 ```{r}
 plot_cor_pc <- function(pcm_, pce_) {
   d <- pcs %>% filter(pcm == pcm_, pce == pce_)
-  d$color <- samples_colors(as.vector(d$sample))
+  cols <- samples_colors(as.vector(d$sample))
   p <- ggplot(d, aes(x=met, y=expr)) +
     stat_smooth(method=lm, color='black') +
-    geom_point(aes(color=color), size=2) +
+    geom_point(aes(color=sample), size=2) +
+    scale_color_manual(values=cols) +
     xlab(sprintf('Methylation PC %d', pcm_)) +
     ylab(sprintf('Expression PC %d', pce_)) +
     guides(color=F) + theme_pub()

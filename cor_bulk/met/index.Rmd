@@ -84,13 +84,19 @@ plot_cor <- function(name, nmax=50000) {
 }
 ```
 
+## scM&T-Seq
+
 ```{r fig.width=8, fig.height=8}
 plot_cor('m15')
 ```
 
+## scBS-Seq
+
 ```{r fig.width=8, fig.height=8}
 plot_cor('m14')
 ```
+
+## Both
 
 ```{r}
 nmax <- 50000
@@ -105,8 +111,12 @@ h <- d %>% mutate(set=as.vector(set)) %>% arrange(set)
 colors <- c('scBS14'='green4', 'scM&T'='royalblue')
 p <- ggplot(h, aes(x=ficz, y=value)) +
   geom_abline(slope=1, linetype='dashed') +
-  geom_point(aes(color=set), size=0.6) +
+  geom_point(aes(color=set), size=0.8) +
   scale_color_manual(values=colors) +
-  xlab('% methylation Ficz') + ylab('% methylation single-cell') + theme_pub()
+  xlab('Methylation bulk') + ylab('Methylation merged scM&T') + theme_pub()
 print(p)
+```
+
+```{r}
+ggsave(p, file='fig_bulk.pdf', width=8, height=8)
 ```

@@ -150,40 +150,86 @@ cmp$rs <- cmp$r %>% group_by(name) %>%
 xtable(as.data.frame(cmp$rs), digits=2)
 ```
 
-```{r}
-d <- list()
-d$r <- cmp$r %>% mutate(type='sc')
-d$rbs <- cmp$rb %>% mutate(sample='bulk_syn', type='bulk_syn')
-if (!is.na(opts$bulk_file)) {
-  d$rb <- readRDS(opts$bulk_file)
-  d$rb <- d$rb %>% mutate(sample='bulk_ficz', type='bulk_ficz')
-}
-cols <- names(d[[1]])
-for (n in names(d)) {
-  cols <- intersect(cols, names(d[[n]]))
-}
-for (n in names(d)) {
-  d[[n]] <- d[[n]][,cols]
-}
-d <- do.call(rbind.data.frame, d) %>% mutate(type=factor(type), sample=factor(sample))
-cmp$rc <- d
+```{r eval=F}
+write.table(cmp$rs, 'tab_sample_r.csv', sep='\t', row.names=F)
+```
+
+```{r eval=!is.na(opts$bulk_file)}
+cmp$rb <- readRDS(opts$bulk_file)
 ```
 
 ```{r fig.height=10}
-d <- cmp$rc %>% group_by(name) %>% summarise(r_mean=mean(r, na.rm=T))
-d <- cmp$rc %>% inner_join(d, by='name')
+d <- cmp$r
+h <- d %>% group_by(name) %>% summarise(r_mean=mean(r, na.rm=T))
+d <- d %>% inner_join(h, by='name')
 
+db <- cmp$rb
 p <- ggplot(d, aes(x=name, y=r)) +
-  geom_hline(yintercept=0, linetype='dashed') +
+  geom_hline(yintercept=0, linetype='dashed', color='darkgrey') +
   geom_boxplot(aes(fill=r_mean), alpha=0.4, outlier.size=0) +
-  geom_point(aes(color=type, size=type), position=position_jitter(w=0.1)) +
-  scale_color_manual(values=c('sc'='black', 'bulk_syn'='brown1', 'bulk_ficz'='royalblue')) +
-  scale_size_discrete(range=c(3, 1, 3)) +
+  geom_point(position=position_jitter(w=0.1), size=1.5) +
+  geom_point(data=db, color='black', fill='orange1', shape=21, size=2.5) +
   scale_fill_gradient2(low='darkblue', mid='white', high='darkred', midpoint=0.0) +
-  xlab('') + ylab('r') + coord_flip() +
+  xlab('') + ylab('Pearson correlation') +
   theme_pub() +
   theme(legend.position='right')
 print(p)
+```
+
+```{r eval=F}
+ggsave(p, file='fig_sample.pdf', width=8, height=8)
+```
+
+```{r eval=F}
+s <- c('active_enhancer', 'cgi', 'exon', 'gene_body', 'H3K27ac', 'H3K27me3', 'H3K4me1', 'intergenic', 'intron', 'LMR', 'p300', 'prom', 'prom_cgi', 'prom_non_cgi')
+LMR
+
+H3K27ac
+
+H3K4me1
+
+P300
+
+CGI
+
+Promoter (non-CGI)
+
+Promoter (CGI)
+
+Intergenic
+
+Exon
+
+Intron
+
+Gene body
+
+d <- cmp$r %>% mutate(name=factor(name, levels=rev(levels(name))))
+h <- d %>% group_by(name) %>% summarise(r_mean=mean(r, na.rm=T))
+d <- d %>% inner_join(h, by='name')
+
+db <- cmp$rb
+p <- ggplot(d, aes(x=name, y=r)) +
+  geom_hline(yintercept=0, linetype='dashed', color='darkgrey') +
+  geom_boxplot(aes(fill=r_mean), alpha=0.4, outlier.size=0) +
+  geom_point(position=position_jitter(w=0.1), size=1.5) +
+  geom_point(data=db, color='black', fill='orange1', shape=21, size=2.5) +
+  scale_fill_gradient2(low='darkblue', mid='white', high='darkred', midpoint=0.0) +
+  xlab('') + ylab('Pearson correlation') +
+  theme_pub() +
+  theme(
+    legend.position='right',
+    axis.text.x=element_text(angle=30, hjust=1)
+    )
+print(p)
+```
+
+```{r eval=F}
+ggsave(p, file='fig_sample_hor.pdf', width=12, height=6)
+```
+
+```{r}
+p + coord_flip()
 ```
 
 
@@ -202,7 +248,7 @@ print(p)
 ```
 
 ```{r eval=F}
-ggsave('r_cov.pdf', p, width=10, height=15)
+ggsave('fig_r_cov.pdf', p, width=10, height=13)
 ```
 
 ## R versus mean methylation
@@ -221,5 +267,5 @@ print(p)
 ```
 
 ```{r eval=F}
-ggsave('r_mean.pdf', p, width=10, height=15)
+ggsave('fig_r_mean.pdf', p, width=10, height=13)
 ```

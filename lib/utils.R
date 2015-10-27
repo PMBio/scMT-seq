@@ -7,6 +7,8 @@ theme_pub <- function() {
   p <- theme(
     axis.text=element_text(size=rel(1.2), color='black'),
     axis.title=element_text(size=rel(1.5)),
+    # axis.title.y=element_text(vjust=1.5),
+    # axis.title.x=element_text(vjust=-0.2),
     legend.position='top',
     legend.text=element_text(size=rel(1.2)),
     legend.title=element_text(size=rel(1.2)),

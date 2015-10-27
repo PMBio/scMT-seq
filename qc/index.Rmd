@@ -14,6 +14,7 @@ opts_chunk$set(echo=F, warning=F, message=F)
 library(ggplot2)
 library(dplyr)
 library(tidyr)
+library(gridExtra)
 source('../lib/utils.R')
 ```
 
@@ -24,7 +25,7 @@ opts$use <- c('m14', 'm15P3')
 opts$colors <- c(
   'm14'='forestgreen',
   'm15'='brown2',
-  'm15P3'='navyblue'
+  'm15P3'='royalblue'
   )
 ```
 
@@ -40,22 +41,84 @@ d <- d %>% filter(set %in% opts$use) %>%
 dat <- d
 ```
 
-```{r fig.width=8, fig.height=6}
+```{r fig.width=7, fig.height=6}
 p <- ggplot(dat, aes(x=unique_mapped, y=per_cpg, color=set)) +
   geom_point() +
   geom_smooth(method='loess', degree=1, alpha=0.2, size=1) +
   scale_color_manual(values=opts$colors) +
-  xlab('# mapped reads') + ylab('CpG recovery') +
+  xlab('Number of mapped reads') + ylab('CpG recovery') +
   theme_pub()
 p
 ```
 
-```{r fig.width=8, fig.height=6}
+```{r eval=F}
+ggsave(p, file='fig_mapping.pdf', width=7, height=6)
+```
+
+```{r fig.width=7, fig.height=6}
 p <- ggplot(dat, aes(x=val_trimmed, y=per_cpg, color=set)) +
   geom_point() +
   geom_smooth(method='loess', degree=1, alpha=0.2, size=1) +
   scale_color_manual(values=opts$colors) +
-  xlab('# trimmed validated reads') + ylab('CpG recovery') +
+  xlab('Number of trimmed validated reads') + ylab('CpG recovery') +
   theme_pub()
 p
+```
+
+```{r}
+d <- read.csv('./sup_fig_3_data.csv') %>% tbl_df
+d <- d %>% rename(type=Cell, map_eff=Mapping, dup_rate=Duplication,
+  cpg_rate=CpG.Methylation, chh_rate=CH.methylation) %>%
+  mutate(Study=factor(Study, levels=c('scBS2014', 'M&T'), labels=c('scBS-Seq', 'scM&T-Seq'))) %>%
+  filter(type=='Serum')
+levels(d$set)
+```
+
+```{r}
+opts$colors <- c(
+  'scM&T-Seq'='royalblue',
+  'scBS-Seq'='forestgreen'
+  )
+```
+
+```{r fig.width=5, fig.height=6}
+p1 <- ggplot(d, aes(x=Study, y=map_eff, fill=Study)) +
+  geom_boxplot() +
+  scale_fill_manual(values=opts$colors) +
+  theme_pub() +
+  xlab('') + ylab('Mapping efficiency') +
+  theme(axis.title.y=element_text(vjust=1.5))
+print(p1)
+```
+
+```{r fig.width=5, fig.height=6}
+p2 <- ggplot(d, aes(x=Study, y=dup_rate, fill=Study)) +
+  geom_boxplot() +
+  scale_fill_manual(values=opts$colors) +
+  theme_pub() +
+  xlab('') + ylab('Duplication rate') +
+  theme(axis.title.y=element_text(vjust=1.5))
+print(p2)
+```
+
+```{r fig.width=5, fig.height=6}
+h <- d %>% select(Study, type, cpg_rate, chh_rate) %>% gather(rate, value, -c(Study, type))
+p3 <- ggplot(d, aes(x=Study, y=cpg_rate, fill=Study)) +
+  geom_boxplot() +
+  scale_fill_manual(values=opts$colors) +
+  geom_point(data=h, aes(x=Study, y=value, shape=rate), position=position_jitter(w=0.1, h=0)) +
+  theme_pub() +
+  xlab('') + ylab('Methylation rate') +
+  theme(axis.title.y=element_text(vjust=1.5))
+print(p3)
+```
+
+```{r fig.width=12, fig.height=5}
+grid.arrange(p1, p2, p3, ncol=3)
+```
+
+```{r eval=F}
+pdf('fig_stats.pdf', width=12, height=5)
+grid.arrange(p1, p2, p3, ncol=3)
+dev.off()
 ```
