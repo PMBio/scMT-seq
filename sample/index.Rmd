@@ -1,6 +1,5 @@
 ---
 title: Sample-specific correlation for all genes
-date: 151019
 output:
   html_document:
     toc: yes
@@ -28,7 +27,7 @@ opts$genes_file <- NA
 # opts$genes_file <- '../data/expr/data_raw/subpopulation_lif_genes9.csv'
 opts$samples_file <- '../data/samples/samples_stats.csv'
 opts$bulk_file <- '../../151019_ficz_sample/sample/r.rds'
-opts$cache <- F
+opts$cache <- T
 opts$permute <- F
 opts$alpha <- 0.1
 ```
@@ -171,6 +170,7 @@ p <- ggplot(d, aes(x=name, y=r)) +
   geom_point(data=db, color='black', fill='orange1', shape=21, size=2.5) +
   scale_fill_gradient2(low='darkblue', mid='white', high='darkred', midpoint=0.0) +
   xlab('') + ylab('Pearson correlation') +
+  coord_flip() +
   theme_pub() +
   theme(legend.position='right')
 print(p)
@@ -182,28 +182,6 @@ ggsave(p, file='fig_sample.pdf', width=8, height=8)
 
 ```{r eval=F}
 s <- c('active_enhancer', 'cgi', 'exon', 'gene_body', 'H3K27ac', 'H3K27me3', 'H3K4me1', 'intergenic', 'intron', 'LMR', 'p300', 'prom', 'prom_cgi', 'prom_non_cgi')
-LMR
-
-H3K27ac
-
-H3K4me1
-
-P300
-
-CGI
-
-Promoter (non-CGI)
-
-Promoter (CGI)
-
-Intergenic
-
-Exon
-
-Intron
-
-Gene body
-
 d <- cmp$r %>% mutate(name=factor(name, levels=rev(levels(name))))
 h <- d %>% group_by(name) %>% summarise(r_mean=mean(r, na.rm=T))
 d <- d %>% inner_join(h, by='name')
@@ -226,10 +204,6 @@ print(p)
 
 ```{r eval=F}
 ggsave(p, file='fig_sample_hor.pdf', width=12, height=6)
-```
-
-```{r}
-p + coord_flip()
 ```
 
 

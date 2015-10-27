@@ -1,0 +1,508 @@
+---
+title: Joint clustering
+date: 151019
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F, warning=F, message=F)
+```
+
+```{r, include=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(RColorBrewer)
+library(gridExtra)
+library(gplots)
+library(corrplot)
+library(ggdendro)
+library(grid)
+library(stringr)
+library(xtable)
+source('../lib/utils.R')
+```
+
+```{r}
+options(xtable.type='html')
+```
+
+# Notation
+* bs: scBS-Seq 2014 (13 2i, 21 serum)
+* mt: scM&T-Seq 2015 first patch (22 serum)
+* mt3: scM&T-Seq 2015 third patch (16 2i, 62 serum)
+
+
+```{r}
+opts <- list()
+opts$use <- c('m14', 'm15', 'm15P3', 'ficz')
+
+opts$m14$met_file <- './data/14/prepro/gene_body/data_met.rds'
+opts$m14$meta_file <- './data/14/prepro/gene_body/data_meta.rds'
+
+opts$m15$met_file <- './data/15/prepro/gene_body/data_met.rds'
+opts$m15$meta_file <- './data/15/prepro/gene_body/data_meta.rds'
+opts$m15$excl <- c('CSC4_7E')
+
+opts$m15P3$met_file <- './data/15P3/prepro/gene_body/data_met.rds'
+opts$m15P3$meta_file <- './data/15P3/prepro/gene_body/data_meta.rds'
+opts$m15P3$excl <- c(
+  'CSCP3_SERUM_A01',
+  'CSCP3_SERUM_C06',
+  'CSCP3_SERUM_D03',
+  'CSCP3_SERUM_E04',
+  'CSCP3_SERUM_E06',
+  'CSCP3_SERUM_F10',
+  'CSCP3_SERUM_G04',
+  'CSCP3_SERUM_H04',
+  'CSCP3_SERUM_H05',
+  'CSCP3_SERUM_H06',
+  'CSCP3_SERUM_H07')
+
+opts$ficz$met_file <- './data/ficz/prepro/gene_body/data_met.rds'
+opts$ficz$meta_file <- './data/ficz/prepro/gene_body/data_meta.rds'
+
+opts$colors <- c(
+  'bs_2i'='springgreen1',
+  'bs_serum'='forestgreen',
+  'bs_2i_bulk'='chartreuse',
+  'bs_serum_bulk'='green3',
+  'mt_serum'='brown2',
+  'mt_serum_bulk'='brown',
+  'mt3_2i'='royalblue',
+  'mt3_serum'='navyblue',
+  'mt3_2i_bulk'='steelblue1',
+  'mt3_serum_bulk'='blue',
+  'ficz_serum_bulk'='orange1'
+  )
+
+opts$cache <- F
+```
+
+```{r}
+dat <- list()
+```
+
+```{r read_m14}
+m14_bulk <- function(d) {
+  d$type <- factor(grepl('2i', as.vector(d$sample), ignore.case=T),
+    levels=c(T, F), labels=c('2i', 'serum'))
+  d <- d %>% group_by(chromo, start, end, id_, type) %>%
+    summarise(
+      met=mean(met, na.rm=T),
+      weight=mean(weight),
+      sample=paste('RSCbulk', type[1], sep='_')
+      ) %>% ungroup %>% select(-type)
+  return (d)
+}
+
+dat$m14$met <- readRDS(opts$m14$met_file)
+d <- m14_bulk(dat$m14$met)
+dat$m14$met <- rbind.data.frame(dat$m14$met, d)
+dat$m14$meta <- readRDS(opts$m14$meta_file)
+dat$m14$met <- select(dat$m14$meta, c(id_, ens_id=id, feature)) %>%
+  inner_join(dat$m14$met, by='id_') %>% group_by(ens_id) %>% top_n(1, id_) %>%
+  ungroup
+```
+
+```{r read_m15, eval=opts$use_m15}
+m15_bulk <- function(d) {
+  d <- d %>% group_by(chromo, start, end, id_) %>%
+    summarise(
+      met=mean(met, na.rm=T),
+      weight=mean(weight),
+      sample=paste('CSC', 'bulk', sep='_')
+      ) %>% ungroup
+  return (d)
+}
+
+dat$m15$met <- readRDS(opts$m15$met_file) %>%
+  filter(!(sample %in% opts$m15$excl)) %>% droplevels
+d <- m15_bulk(dat$m15$met)
+dat$m15$met <- rbind.data.frame(dat$m15$met, d)
+dat$m15$meta <- readRDS(opts$m15$meta_file)
+dat$m15$met <- select(dat$m15$meta, c(id_, ens_id=id, feature)) %>%
+  inner_join(dat$m15$met, by='id_') %>% group_by(ens_id) %>% top_n(1, id_) %>%
+  ungroup
+```
+
+```{r read_m15P3}
+m15P3_bulk <- function(d) {
+  d$type <- factor(grepl('2i', as.vector(d$sample), ignore.case=T),
+    levels=c(T, F), labels=c('2i', 'serum'))
+  d <- d %>% group_by(chromo, start, end, id_, type) %>%
+    summarise(
+      met=mean(met, na.rm=T),
+      weight=mean(weight),
+      sample=paste('CSCP3', type[1], 'bulk', sep='_')
+      ) %>% ungroup %>% select(-type)
+  return (d)
+}
+
+dat$m15P3$met <- readRDS(opts$m15P3$met_file) %>%
+  filter(!(sample %in% opts$m15P3$excl)) %>% droplevels
+d <- m15P3_bulk(dat$m15P3$met)
+dat$m15P3$met <- rbind.data.frame(dat$m15P3$met, d)
+dat$m15P3$meta <- readRDS(opts$m15P3$meta_file)
+dat$m15P3$met <- select(dat$m15P3$meta, c(id_, ens_id=id, feature)) %>%
+  inner_join(dat$m15P3$met, by='id_') %>% group_by(ens_id) %>% top_n(1, id_) %>%
+  ungroup
+```
+
+```{r read_ficz}
+dat$ficz$met <- readRDS(opts$ficz$met_file) %>%
+  mutate(sample=factor(sample, labels=c('D12_serum_bulk')))
+dat$ficz$meta <- readRDS(opts$ficz$meta_file)
+dat$ficz$met <- select(dat$ficz$meta, c(id_, ens_id=id, feature)) %>%
+  inner_join(dat$ficz$met, by='id_') %>% group_by(ens_id) %>% top_n(1, id_) %>%
+  ungroup
+```
+
+```{r m14_samples}
+m14_samples <- function(s) {
+  s <- as.vector(s)
+  d <- list()
+  d$sample <- s
+  d$set <- 'bs'
+  d$type <- factor(grepl('2i', s, ignore.case=T),
+    levels=c(T, F), labels=c('2i', 'serum'))
+  d$label <- sub('RSC', '', str_extract(s, '(RSC.+)'))
+  d$label <- paste(d$set, d$label, sep='_')
+  return (as.data.frame(d))
+}
+dat$m14$samples <- m14_samples(levels(dat$m14$met$sample))
+```
+
+
+```{r m15_samples}
+m15_samples <- function(s) {
+  s <- as.vector(s)
+  d <- list()
+  d$sample <- s
+  d$set <- 'mt'
+  d$type <- 'serum'
+  d$label <- sapply(str_split(s, '_'), function(x) x[length(x)])
+  d$label <- paste(d$set, d$label, sep='_')
+  return (as.data.frame(d))
+}
+dat$m15$samples <- m15_samples(levels(dat$m15$met$sample))
+```
+
+```{r m15P3_samples}
+m15P3_samples <- function(s) {
+  s <- as.vector(s)
+  d <- list()
+  d$sample <- s
+  d$set <- 'mt3'
+  d$type <- factor(grepl('2i', s, ignore.case=T),
+    levels=c(T, F), labels=c('2i', 'serum'))
+  d$label <- sapply(str_split(s, '_'), function(x) x[length(x)])
+  d$label <- paste(d$set, d$label, sep='_')
+  return (as.data.frame(d))
+}
+dat$m15P3$samples <- m15P3_samples(levels(dat$m15P3$met$sample))
+```
+
+
+```{r ficz_samples}
+ficz_samples <- function(s) {
+  d <- list()
+  s <- as.vector(s)
+  d$sample <- s
+  d$set <- 'ficz'
+  d$type <- 'serum'
+  d$label <- sapply(str_split(s, '_'), function(x) x[1])
+  d$label <- paste(d$set, d$label, sep='_')
+  return (as.data.frame(d))
+}
+dat$ficz$samples <- ficz_samples(levels(dat$ficz$met$sample))
+```
+
+```{r join_samples}
+d <- list()
+for (n in c(opts$use)) {
+  d[[length(d) + 1]] <- dat[[n]]$samples
+}
+d <- do.call(rbind.data.frame, d) %>% tbl_df
+d$bulk <- grepl('bulk', as.vector(d$sample))
+d$stype <- paste(d$set, d$type, sep='_')
+d[d$bulk, 'stype'] <- paste(d[d$bulk,]$stype, 'bulk', sep='_')
+d <- d %>% mutate(stype=factor(stype))
+dat$samples <- d
+```
+
+```{r join, cache=opts$cache}
+min_cov <- function(d) {
+  h <- d %>% group_by(ens_id) %>%
+    summarise(cov=sum(!is.na(met))/length(met)) %>% ungroup
+  h <- min(h$cov)
+  return (h)
+}
+stopifnot(min_cov(dat$m14$met) >= 0.5)
+stopifnot(min_cov(dat$m15$met) >= 0.5)
+stopifnot(min_cov(dat$m15P3$met) >= 0.4)
+
+g <- as.vector(unique(dat$m14$met$ens_id))
+for (n in c(opts$use)) {
+  g <- intersect(g, as.vector(unique(dat[[n]]$met$ens_id)))
+}
+
+d <- list()
+for (n in c(opts$use)) {
+  h <- dat[[n]]$met
+  h <- h %>% filter(ens_id %in% g)
+  h$ens_id <- droplevels(h$ens_id)
+  # dat[[n]]$met <- h
+  d[[n]] <- h
+  d[[n]]$data <- n
+}
+
+d <- do.call(rbind.data.frame, d) %>% mutate(data=factor(data)) %>% tbl_df
+
+dat$met <- d
+dat$mmet <- dat$met %>% select(ens_id, sample, met) %>% spread(sample, met)
+stopifnot(nrow(dat$mmet) == length(g))
+stopifnot(min_cov(dat$met) >= 0.4)
+```
+
+
+
+## PCA
+
+```{r fig.width=10, fig.height=15}
+impute <- function(d) {
+  means <- colMeans(d, na.rm=T)
+  if (any(is.na(means))) {
+    stop('Insufficient data for mean imputation!')
+  }
+  for (i in 1:length(means)) {
+    d[is.na(d[,i]), i] <- means[i]
+  }
+  return (d)
+}
+
+pca <- function(d, scale=F) {
+  # columns are samples
+  d <- scale(d, center=T, scale=scale)
+  d <- t(d)
+  s <- svd(d)
+  vec <- s$u
+  rownames(vec) <- rownames(d)
+  val <- s$d**2
+  val <- val / sum(val)
+  return (list(vec=vec, val=val))
+}
+
+plot_pca_vec <- function(pc_vec, x=1, y=2) {
+  t <- data.frame(sample=factor(rownames(pc_vec)),
+    pcx=pc_vec[,x], pcy=pc_vec[,y])
+  t <- t %>% left_join(dat$samples, by='sample')
+  p <- ggplot(filter(t, !bulk), aes(x=pcx, y=pcy)) +
+    geom_point(aes(color=stype, shape=type), size=3) +
+    geom_point(data=filter(t, bulk), aes(x=pcx, y=pcy, fill=stype), pch=21, size=6, color='black') +
+    scale_color_manual(values=opts$colors) +
+    scale_fill_manual(values=opts$colors) +
+    # geom_text(aes(label=label), vjust=-.4, hjust= .3, size=3) +
+    xlab(sprintf('\npc%d', x)) + ylab(sprintf('pc%d\n', y)) +
+    theme_pub() +
+    guides(color=guide_legend(nrow=4))
+  return (p)
+}
+
+plot_pca_val <- function(pc_val) {
+  t <- data.frame(pc=1:length(pc_val), val=pc_val)
+  p <- ggplot(t, aes(x=pc, y=val)) +
+    geom_bar(stat='identity', fill='salmon', color='black') +
+    xlab('\nprinciple component') +
+    ylab('% variance explained\n') +
+    theme_pub()
+  return (p)
+}
+```
+
+```{r}
+d <- dat$mmet
+rownames(d) <- d$ens_id
+d <- d %>% select(-ens_id) %>% as.matrix
+cmp <- list()
+
+cmp$pca <- pca(impute(d), scale=F)
+```
+
+```{r fig.width=10, fig.height=9}
+p1 <- plot_pca_vec(cmp$pca$vec)
+p1
+```
+
+```{r}
+p <- p1 + xlab('PC 1 (46.3 %)') + ylab('PC 2 (2.7 %)') +
+  theme(
+    axis.title.y=element_text(vjust=1.5),
+    axis.title.x=element_text(vjust=-0.2)
+    )
+ggsave(p, file='fig_pca_all.pdf', width=8, height=8)
+```
+
+```{r}
+p2 <- plot_pca_val(cmp$pca$val)
+p2
+```
+
+```{r results='asis'}
+h <- cmp$pca$val[1:5]
+names(h) <- sapply(1:length(h), function(x) sprintf('pc%d', x))
+h <- t(data.frame(h))
+rownames(h) <- '% variance'
+xtable(h, digits=3)
+```
+
+
+## Clustering on 500 most variable genes
+
+
+```{r fig.width=10, fig.height=12}
+h <- dat$met %>% group_by(ens_id) %>% summarise(var=var(met, na.rm=T)) %>%
+  ungroup %>% arrange(desc(var)) %>% head(500)
+hh <- h %>% select(ens_id) %>% unlist %>% as.vector
+
+d <- dat$mmet %>% filter(ens_id %in% hh) %>% as.data.frame
+rownames(d) <- d$ens_id
+d <- d %>% select(-ens_id)
+cmp$hclust <- d
+```
+
+
+```{r}
+plot_heat <- function(d, Rowv=T, xlab='value', col_colors=NULL) {
+  d <- as.matrix(d)
+  colors <- rev(brewer.pal(9, 'Spectral'))
+  colors <- colorRampPalette(colors)(50)
+
+  labRow <- NA
+  if (nrow(d) > 500) {
+    dendro='column'
+  } else {
+    dendro = 'both'
+  }
+  p <- heatmap.2(d, density.info='none', trace='none', col=colors,
+    Rowv=Rowv, Colv=T, keysize=1.0, dendro=dendro, labRow=NA,
+    lwid=c(2, 5), key.title='', srtCol=45, key.xlab=xlab,
+    ColSideColors=col_colors)
+  return (p)
+}
+
+get_from_sample <- function(x, what='cond') {
+  d <- dat$samples
+  h <- d[match(x, as.vector(d$sample)),][[what]]
+  return (h)
+}
+
+plot_heat_col <- function(d) {
+  samples <- colnames(d)
+  cond <- as.vector(get_from_sample(samples, 'stype'))
+  col_colors <- opts$colors[cond]
+  lab <- as.vector(get_from_sample(samples, 'label'))
+  colnames(d) <- lab
+  p <- plot_heat(d, col_colors=col_colors)
+  return (p)
+}
+```
+
+```{r fig.width=10, fig.height=16}
+p <- plot_heat_col(cmp$hclust)
+```
+
+
+## Clustering
+
+
+```{r}
+hclust_order <- function(h) {
+  return (h$labels[h$order])
+}
+
+brewer_cols <- function(pal='Spectral', rev=F) {
+  ncol <- brewer.pal.info[pal, 'maxcolors']
+  col <- colorRampPalette(brewer.pal(ncol, pal))(50)
+  if (rev) {
+    col <- rev(col)
+  }
+  return (col)
+}
+
+corrplot_color <- function(col=NULL) {
+  if (is.null(col)) {
+    col <- brewer.pal(11, 'RdYlBu')
+  }
+  col <- colorRampPalette(col)(200)
+  col <- c(col, col)
+  return (col)
+}
+
+plot_dist <- function(dist, col=NULL, corr=FALSE, order=NULL, ...) {
+  if (is.null(order)) {
+    order <- hclust_order(hclust(dist))
+  }
+  dist_mat <- as.matrix(dist)
+  dist_mat <- dist_mat[order, order]
+  col <- corrplot_color(col)
+  suppressWarnings(corrplot(dist_mat, method='color', is.corr=corr, tl.col='black', col=col, order='original', ...))
+}
+
+plot_cor <- function(dist, ...) {
+  plot_dist(dist, cor=TRUE, ...)
+}
+
+plot_hclust_color <- function(hc, sample_levels=NULL) {
+  dendro <- as.dendrogram(hc)
+  dendro_d <- dendro_data(dendro)
+  dendro_d_s <- ggdendro::segment(dendro_d)
+  dendro_d_l <- ggdendro::label(dendro_d)
+  if (!is.null(sample_levels)) {
+    dendro_d_l$label <- factor(dendro_d_l$label, levels=sample_levels)
+  }
+  p <- ggplot(dendro_d_s) + geom_segment(aes(x=x, y=y, xend=xend, yend=yend))
+  p <- p + geom_text(data=dendro_d_l, aes(x=x, y=y, label=label, color=label), size=3, angle=20, vjust=3)
+  p <- p + guides(color=FALSE) + theme_dendro()
+  return (p)
+}
+
+plot_hclust <- function(hc, ...) {
+  p <- ggdendrogram(hc, theme_dendro=FALSE, ...) + xlab('') + ylab('')
+  return (p)
+}
+
+plot_hclust2 <- function(d) {
+  h <- hclust(dist(t(d)))
+  p1 <- ggdendrogram(h) + theme(axis.text=element_blank(),
+    axis.title.x=element_blank(),
+    plot.margin=unit(rep(0, 4), 'mm'))
+
+  hh <- h$labels[h$order]
+  h2 <- data_frame(sample=hh) %>%
+    inner_join(dat$samples, by='sample') %>%
+    mutate(sample=factor(sample, levels=hh))
+
+  p2 <- ggplot(h2, aes(x=sample, y=1)) + geom_tile(aes(fill=stype)) +
+    scale_fill_manual(values=opts$colors) +
+    theme(line=element_blank(), axis.title=element_blank(),
+      panel.background=element_blank(),
+      legend.position='bottom',
+      axis.text.x=element_text(angle=90),
+      axis.text.y=element_blank()) +
+    guides(fill=guide_legend(nrow=4))
+  grid.arrange(p1, p2, nrow=2)
+}
+```
+
+```{r fig.width=10, fig.height=6}
+plot_hclust2(cmp$hclust)
+```
+
+```{r fig.width=12, fig.height=12}
+plot_dist(dist(t(cmp$hclust)))
+```

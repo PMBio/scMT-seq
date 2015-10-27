@@ -1,0 +1,90 @@
+---
+title: Coverage analysis
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F, warning=F, message=F)
+```
+
+```{r, include=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+source('../../lib/utils.R')
+```
+
+```{r}
+opts <- list()
+opts$colors <- c('scBS-Seq'='forestgreen', 'scM&T-Seq'='royalblue')
+```
+
+```{r}
+dat <- list()
+dat$m14 <- readRDS('../m14/cov.rds')
+dat$m15 <- readRDS('../m15P3/cov.rds')
+```
+
+```{r}
+d <- list()
+for (n in c('m14', 'm15')) {
+  di <- dat[[n]]$cov_min
+  di$np <- di$n / max(di$n)
+  di$study <- n
+  d[[length(d) + 1]] <- di
+}
+d <- do.call(rbind.data.frame, d) %>%
+  mutate(
+    study=factor(study, levels=c('m14', 'm15'), labels=c('scBS-Seq', 'scM&T-Seq')),
+    name=factor(name)) %>%
+  mutate(name=factor(name, levels=sort(levels(name))))
+dat$cov_min <- d
+```
+
+## Genome-wide
+
+```{r fig.width=8, fig.height=6}
+d <- dat$cov_min %>% filter(name == 'w10k_s1k') %>% droplevels
+p <- ggplot(d, aes(x=np, y=per, color=study)) +
+  geom_line(lwd=0.8) +
+  scale_color_manual(values=opts$colors) +
+  guides(color=guide_legend(title='Study')) +
+  xlab('Minimum percentage of cells') +
+  ylab('Percentage sites covered') +
+  theme_pub() +
+  theme(
+    axis.title.x=element_text(vjust=-0.8),
+    axis.title.y=element_text(vjust=1.2)
+  )
+print(p)
+```
+
+```{r eval=F}
+ggsave(p, file='fig_genome.pdf', width=8, height=6)
+```
+
+## Context specific
+
+```{r fig.width=12, fig.height=12}
+d <- dat$cov_min %>% filter(name != 'w10k_s1k') %>% droplevels
+p <- ggplot(d, aes(x=np, y=per, color=study)) +
+  geom_line(lwd=0.8) +
+  scale_color_manual(values=opts$colors) +
+  guides(color=guide_legend(title='Study')) +
+  facet_wrap(~name, ncol=3) +
+  xlab('Minimum percentage of cells') +
+  ylab('Percentage sites covered') +
+  theme_pub() +
+  theme(
+    axis.title.x=element_text(vjust=-0.8),
+    axis.title.y=element_text(vjust=1.2)
+  )
+print(p)
+```
+
+```{r eval=F}
+ggsave(p, file='fig_context.pdf', width=12, height=13)
+```

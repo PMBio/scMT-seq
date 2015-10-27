@@ -1,0 +1,92 @@
+---
+title: Coverage analysis CSCP3
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F, warning=F, message=F)
+```
+
+```{r, include=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+source('../../lib/utils.R')
+```
+
+```{r}
+opts <- list()
+opts$reports <- '../data/m15P3'
+opts$samples <- '../../data/samples/samples.csv'
+opts$names_ <- list.dirs(opts$reports, full=F, rec=F)
+```
+
+```{r}
+dat <- list()
+dat$samples <- read_samples_list(opts$samples)
+cmp <- list()
+```
+
+```{r, cache=T}
+get_cov <- function(f) {
+  d <- read_report_values(f, samples=dat$samples)
+  cov <- rowSums(d > 0)
+  return (cov)
+}
+
+d <- list()
+for (name in opts$names_) {
+  f <- file.path(opts$reports, name, 'weights.txt')
+  if (file.exists(f)) {
+    message(f)
+    cov <- get_cov(f)
+    di <- data.frame(name=name, id_=1:length(cov), cov=cov)
+    d[[length(d) + 1]] <- di
+  }
+}
+d <- do.call(rbind.data.frame, d) %>% tbl_df
+d <- d %>% mutate(name=factor(name)) %>%
+  mutate(name=factor(name, levels=rev(sort(levels(name)))))
+cov <- d
+```
+
+```{r}
+cmp$cov <- cov
+```
+
+```{r}
+cov_min <- function(d, n) {
+  h <- sapply(0:n, function(x) sum(d$cov >= x) / length(d$cov))
+  h <- data.frame(name=d$name[[1]], n=1:length(h), per=h)
+  return (h)
+}
+
+n <- max(cmp$cov$cov)
+cmp$cov_min <- cmp$cov %>% group_by(name) %>% do(cov_min(., n)) %>% ungroup %>% tbl_df
+```
+
+```{r}
+saveRDS(cmp, 'cov.rds')
+```
+
+```{r fig.width=8, fig.height=6}
+d <- cmp$cov_min %>% mutate(name=factor(name, levels=rev(levels(name))))
+ggplot(d, aes(x=n, y=per, color=name)) +
+  geom_line(lwd=0.6) +
+  xlab('Minimum number of cell') + ylab('Coverage') +
+  theme_pub() +
+  guides(color=guide_legend(title='Context', ncol=4))
+```
+
+```{r fig.width=12, fig.height=10}
+d <- cmp$cov_min %>% mutate(name=factor(name, levels=rev(levels(name))))
+ggplot(d, aes(x=n, y=per, color=name)) +
+  geom_line(lwd=0.6) +
+  facet_wrap(~name) +
+  xlab('Minimum number of cell') + ylab('Coverage') +
+  theme_pub() +
+  guides(color=guide_legend(title='Context', ncol=4))
+```

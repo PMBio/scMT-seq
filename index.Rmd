@@ -17,7 +17,9 @@ output:
 
 # QC
 * [Statistics](./qc/index.html)
-* [Clustering](./clust/clust/index.html)
+* [Clustering](./clust/index.html)
 * [Comparison variability](./var/m14_m15P3/index.html)
 * [Correlation with bulk methylation](./cor_bulk/met/index.html)
+* [Coverage analysis](./cov/m14_m15P3/index.html)
 * [CCA](./cca/index.html)
+

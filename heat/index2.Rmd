@@ -1,0 +1,120 @@
+---
+title: Joint clustering on expression and methylation
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F, warning=F, message=F)
+```
+
+```{r, include=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(RColorBrewer)
+library(gridExtra)
+library(gplots)
+library(corrplot)
+library(ggdendro)
+library(weights)
+library(stringr)
+library(weights)
+source('viz.R')
+source('../lib/utils.R')
+```
+
+```{r}
+opts <- list()
+opts$data_file <- '../data/join/data.rds'
+opts$r_file <- '../gene/r.rds'
+opts$genes_file <- '../data/expr/data_raw/subpopulation_lif_genes9.csv'
+opts$name <- 'gene_body'
+opts$select_by <- 'expr_var'
+opts$n <- 300
+
+opts$clust <- list()
+opts$clust$c1 <- c('B10', 'H10', 'F01', 'F07', 'E09', 'E01', 'H03', 'C02', 'C05', 'B05', 'B09', 'D05', 'C07')
+opts$clust$c2 <- c('H02', 'D10', 'F09', 'B06', 'F06', 'D06', 'E05', 'B07', 'B04', 'B01', 'E03', 'A06', 'C04')
+opts$clust_colors <- c('default'='#fdc086', 'c1'='#7fc97f', 'c2'='#beaed4')
+```
+
+```{r read}
+read_genes <- function(f) {
+  d <- read.csv(f, sep=',', head=T) %>% tbl_df
+  names(d) <- c('ens_id', 'gene_id')
+  return (d)
+}
+
+dat <- list()
+dat$em <- readRDS(opts$data_file) %>%
+  filter(name == opts$name) %>%
+  mutate(sample=factor(sample, labels=format_sample(levels(sample)))) %>%
+  droplevels
+dat$r <- readRDS(opts$r_file) %>%
+  filter(name == opts$name) %>% droplevels
+dat$genes <- read_genes(opts$genes_file)
+```
+
+```{r prepro}
+dat$s <- dat$em %>% group_by(name, id_.x, id_.y) %>%
+  summarise(
+    expr_mean = mean(expr),
+    expr_var = var(expr),
+    met_mean = weighted.mean(met, weight, na.rm=T),
+    met_var = wtd.var(met, weight, na.rm=T)
+    ) %>% ungroup
+dat$s <- dat$s %>% inner_join(dat$r, by=c('name', 'id_.x', 'id_.y'))
+```
+
+
+
+```{r}
+col_names <- function(d, heat) {
+  m <- colnames(d)
+  m <- m[3:length(m)]
+  m <- m[heat$colInd]
+  m <- paste(sapply(m, function(x) sprintf('\'%s\'', x)), collapse=', ')
+  return (m)
+}
+```
+
+```{r}
+dclust <- data_clust(data_select(opts$n, opts$select_by))
+```
+
+```{r fig.width=10, fig.height=10}
+pm <- plot_heat_met(dclust)
+```
+
+```{r eval=F}
+pdf(file='fig_heat2_met.pdf', width=10, height=10)
+pm <- plot_heat_met(dclust)
+dev.off()
+```
+
+```{r eval=F}
+col_names(dclust$m, pm)
+```
+
+```{r fig.width=10, fig.height=10}
+pe <- plot_heat_expr(dclust, Rowv=pm$rowDendrogram)
+```
+
+```{r eval=F}
+pdf(file='fig_heat2_expr.pdf', width=10, height=10)
+pe <- plot_heat_expr(dclust, Rowv=pm$rowDendrogram)
+dev.off()
+```
+
+```{r fig.height=10, fig.width=1.5}
+plot_tracks(data_track(dclust, pm))
+```
+
+```{r eval=F}
+pdf(file='fig_heat2_tracks.pdf', width=1.5, height=10)
+plot_tracks(data_track(dclust, pm))
+dev.off()
+```
