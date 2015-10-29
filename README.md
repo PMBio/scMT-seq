@@ -31,6 +31,6 @@ Content
 
 Contact
 -------
-Christof Angermueller
-cangermueller@ebi.ac.uk
-https://cangermueller.com
+* Christof Angermueller
+* cangermueller@ebi.ac.uk
+* https://cangermueller.com
