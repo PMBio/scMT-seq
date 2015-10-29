@@ -1,6 +1,5 @@
 ---
-title: CSCP3 gene-specific correlation
-date: 151014
+title: Gene-specific correlation analysis
 output:
   html_document:
     toc: yes
@@ -290,7 +289,7 @@ print(p)
 ```
 
 ```{r fig.width=10, fig.height=16, eval=F}
-sel <- c('cpg_mean', 'gene_body', 'prom_non_cgi', 'Wu_Tet1', 'LMR', 'p300')
+sel <- c('cpg_mean', 'gene_body', 'prom_non_cgi', 'H3K27ac', 'LMR', 'p300')
 d <- cmp$rs %>% filter(name %in% sel)
 d <- d %>% mutate(
   pluri=factor(pluri, levels=c(F, T), labels=c('no', 'yes')),

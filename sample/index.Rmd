@@ -181,12 +181,13 @@ ggsave(p, file='fig_sample.pdf', width=8, height=8)
 ```
 
 ```{r eval=F}
-s <- c('active_enhancer', 'cgi', 'exon', 'gene_body', 'H3K27ac', 'H3K27me3', 'H3K4me1', 'intergenic', 'intron', 'LMR', 'p300', 'prom', 'prom_cgi', 'prom_non_cgi')
-d <- cmp$r %>% mutate(name=factor(name, levels=rev(levels(name))))
+s <- c('gene_body', 'cgi', 'intron', 'exon', 'intergenic', 'prom_cgi', 'prom_non_cgi', 'H3K27ac', 'H3K27me3', 'H3K4me1', 'LMR', 'p300')
+d <- cmp$r %>% filter(name %in% s) %>%
+  mutate(name=factor(name, levels=s))
 h <- d %>% group_by(name) %>% summarise(r_mean=mean(r, na.rm=T))
 d <- d %>% inner_join(h, by='name')
 
-db <- cmp$rb
+db <- cmp$rb %>% filter(name %in% s)
 p <- ggplot(d, aes(x=name, y=r)) +
   geom_hline(yintercept=0, linetype='dashed', color='darkgrey') +
   geom_boxplot(aes(fill=r_mean), alpha=0.4, outlier.size=0) +

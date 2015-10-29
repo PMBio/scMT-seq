@@ -48,7 +48,7 @@ dat$cov_min <- d
 
 ```{r fig.width=8, fig.height=6}
 d <- dat$cov_min %>% filter(name == 'w10k_s1k') %>% droplevels
-p <- ggplot(d, aes(x=np, y=per, color=study)) +
+p <- ggplot(d, aes(x=np * 100, y=per * 100, color=study)) +
   geom_line(lwd=0.8) +
   scale_color_manual(values=opts$colors) +
   guides(color=guide_legend(title='Study')) +
@@ -70,7 +70,7 @@ ggsave(p, file='fig_genome.pdf', width=8, height=6)
 
 ```{r fig.width=12, fig.height=12}
 d <- dat$cov_min %>% filter(name != 'w10k_s1k') %>% droplevels
-p <- ggplot(d, aes(x=np, y=per, color=study)) +
+p <- ggplot(d, aes(x=np * 100, y=per * 100, color=study)) +
   geom_line(lwd=0.8) +
   scale_color_manual(values=opts$colors) +
   guides(color=guide_legend(title='Study')) +
