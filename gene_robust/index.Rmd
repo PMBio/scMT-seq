@@ -31,7 +31,6 @@ opts$trials <- 5
 
 opts$rnd_trials <- 0
 opts$filter_genes <- F
-opts$min_sites <- 10
 opts$cache <- T
 opts$mean <- F
 opts$permute <- F
@@ -103,69 +102,43 @@ dat$em_meta <- dat$em_meta %>% droplevels
 ```
 
 ```{r}
-annotate_r <- function(d) {
-  h <- d %>% group_by(name) %>% summarise(n=n()) %>%
-    filter(n >= opts$min_sites) %>% select(name) %>% unlist
-  d <- d %>% filter(name %in% h) %>% mutate(name=droplevels(name))
-
-  d <- d %>% group_by(name) %>%
-    mutate(p_fdr=p.adjust(p, method='fdr')) %>% ungroup
-
-  if (opts$rnd_trials > 0) {
-    d$p_rnd <- p_adjust_rnd(d$r, as.vector(d$name))
-  } else {
-    d$p_rnd <- d$p_fdr
-  }
-
-  d$p_adj <- d$p_fdr
-
-  h <- nrow(d)
-  d <- d %>% inner_join(dat$em_meta, by=c('name', 'id_.x', 'id_.y'))
-  stopifnot(h == nrow(d))
-
-  d <- d %>% ungroup %>%
-    mutate(name=factor(name)) %>%
-    mutate(name=factor(name, levels=rev(sort(levels(name))))) %>%
-    arrange(desc(name), p_adj, desc(abs(r)))
-  return (d)
+correlate <- function(d) {
+  r <- d %>% group_by(name, id_.x, id_.y) %>%
+    do(wtd_cor(.$expr, .$met, .$weight)) %>% ungroup
+  r <- r %>% group_by(name) %>% mutate(p_adj=p.adjust(p, method='fdr')) %>% ungroup
+  return (r)
 }
 ```
 
 ```{r cor, cache=opts$cache}
-cmp$r <- dat$em %>% group_by(name, id_.x, id_.y) %>%
-  do(wtd_cor(.$expr, .$met, .$weight)) %>% ungroup
+r <- correlate(dat$em)
+saveRDS(r, 'r.rds')
 ```
 
 ```{r}
-cmp$r <- annotate_r(cmp$r)
+cmp$r <- r
 ```
 
-
 ```{r cor_robust, cache=opts$cache}
-samples <- levels(dat$em$sample)
+samples <- as.vector(levels(dat$em$sample))
 r <- list()
 for (k in opts$keep) {
   for (i in 1:opts$trials) {
     s <- sample(samples, round(length(samples) * k))
-    d <- dat$em %>% filter(sample %in% s)
-    rb <- d %>% group_by(name, id_.x, id_.y) %>%
-        do(wtd_cor(.$expr, .$met, .$weight)) %>%
-        ungroup
-    rb <- rb %>% group_by(name, p_adj=p.adjust(p, method='fdr')) %>% ungroup
+    d <- dat$em %>% filter(sample %in% s) %>% droplevels
+    rb <- correlate(d)
     rb$trial <- i
     rb$keep <- k
     r[[length(r) + 1]] <- rb
   }
 }
-cmp$rb <- do.call(rbind.data.frame, r)
+r <- do.call(rbind.data.frame, r)
+r <- r[complete.cases(r),]
+saveRDS(r, 'rb.rds')
 ```
 
 ```{r}
-saveRDS(cmp$rb, 'r.rds')
-```
-
-```{r}
-cmp$rb <- cmp$rb[complete.cases(cmp$rb),]
+cmp$rb <- r
 ```
 
 ```{r}
@@ -174,9 +147,18 @@ cmp$st <- d %>% group_by(name, keep, trial) %>%
   summarise(
     mse=mean(sqrt((r.x - r.y)**2), na.rm=T),
     mad=mean(abs(r.x - r.y), na.rm=T),
-    sig=sum(p_adj.y <= opts$alpha) - sum(p_adj.x <= opts$alpha),
-    sig_pos=sum(p_adj.y <= opts$alpha & r.y > 0) - sum(p_adj.x <= opts$alpha & r.x > 0),
-    sig_neg=sum(p_adj.y <= opts$alpha & r.y < 0) - sum(p_adj.x <= opts$alpha & r.x < 0)
+    sig0=sum(p_adj.x <= opts$alpha),
+    sig0_pos=sum(p_adj.x <= opts$alpha & r.x > 0),
+    sig0_neg=sum(p_adj.x <= opts$alpha & r.x < 0),
+    sig=sum(p_adj.y <= opts$alpha),
+    sig_pos=sum(p_adj.y <= opts$alpha & r.y > 0),
+    sig_neg=sum(p_adj.y <= opts$alpha & r.y < 0),
+    dsig=sig - sig0,
+    dsig_pos=sig_pos - sig0_pos,
+    dsig_neg=sig_neg - sig0_neg,
+    psig=abs(dsig) / sig0,
+    psig_pos=abs(dsig_pos) / sig0_pos,
+    psig_neg=abs(dsig_neg) / sig0_neg
     ) %>% ungroup %>%
   mutate(name=factor(name, levels=sort(unique(name)))) %>%
   arrange(name, keep, trial)
@@ -189,13 +171,18 @@ cmp$s <- cmp$st %>% group_by(name, keep) %>% select(-trial) %>%
     mse_min=min(mse),
     mse_max=max(mse),
     mse_sd=sd(mse),
-    sig_mean=mean(sig),
-    sig_pos_mean=mean(sig_pos),
-    sig_pos_min=min(sig_pos),
-    sig_pos_max=max(sig_pos),
-    sig_neg_mean=mean(sig_neg),
-    sig_neg_min=min(sig_neg),
-    sig_neg_max=max(sig_neg)
+    sig0=max(sig0),
+    sig0_pos=max(sig0_pos),
+    sig0_neg=max(sig0_neg),
+    sig=mean(sig),
+    sig_pos=mean(sig_pos),
+    sig_neg=mean(sig_neg),
+    dsig=mean(dsig),
+    dsig_pos=mean(dsig_pos),
+    dsig_neg=mean(dsig_neg),
+    psig=mean(psig),
+    psig_pos=mean(psig_pos),
+    psig_neg=mean(psig_neg)
     ) %>% ungroup %>% arrange(name, keep)
 cmp$s <- cmp$s %>%
   mutate(keep=factor(keep), name=factor(name, levels=rev(levels(name))))
@@ -235,9 +222,19 @@ ggsave(p, file='fig_rmse.pdf', width=8, height=7)
 ```
 
 ```{r fig.width=8, fig.height=7}
-p <- ggplot(cmp$s, aes(x=name, y=sig_mean)) +
+p <- ggplot(cmp$s, aes(x=name, y=dsig)) +
   geom_bar(aes(fill=keep), stat='identity', position='dodge') +
-  xlab('') + ylab('Reduction in # significant correlations') +
+  xlab('') + ylab('Loss # significant correlations') +
+  guides(fill=guide_legend(title='Fraction of cels')) +
+  coord_flip() +
+  theme_pub()
+print(p)
+```
+
+```{r fig.width=8, fig.height=7}
+p <- ggplot(cmp$s, aes(x=name, y=psig)) +
+  geom_bar(aes(fill=keep), stat='identity', position='dodge') +
+  xlab('') + ylab('Relative loss # significant correlations') +
   guides(fill=guide_legend(title='Fraction of cels')) +
   coord_flip() +
   theme_pub()
