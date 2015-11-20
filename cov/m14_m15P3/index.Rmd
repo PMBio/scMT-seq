@@ -20,6 +20,7 @@ source('../../lib/utils.R')
 ```{r}
 opts <- list()
 opts$colors <- c('scBS-Seq'='forestgreen', 'scM&T-Seq'='royalblue')
+opts$global <- c('10kb'='w10k_s1k', '5kb'='w5k_s1k', '1kb'='w1k_s1k')
 ```
 
 ```{r}
@@ -47,13 +48,16 @@ dat$cov_min <- d
 ## Genome-wide
 
 ```{r fig.width=8, fig.height=6}
-d <- dat$cov_min %>% filter(name == 'w10k_s1k') %>% droplevels
-p <- ggplot(d, aes(x=np * 100, y=per * 100, color=study)) +
-  geom_line(lwd=0.8) +
+d <- dat$cov_min %>% filter(name %in% opts$global) %>%
+  mutate(name=factor(name, levels=opts$global,
+  labels=names(opts$global))) %>% droplevels
+p <- ggplot(d, aes(x=n, y=per * 100, color=study)) +
+  geom_line(aes(linetype=name), lwd=0.8) +
   scale_color_manual(values=opts$colors) +
-  guides(color=guide_legend(title='Study')) +
-  xlab('Minimum percentage of cells') +
-  ylab('Percentage sites covered') +
+  guides(color=guide_legend(title='Study'),
+        linetype=guide_legend(title='Window size')) +
+  xlab('Minimum number of cells') +
+  ylab('Percentage of genomic contexts covered') +
   theme_pub() +
   theme(
     axis.title.x=element_text(vjust=-0.8),
@@ -69,14 +73,14 @@ ggsave(p, file='fig_genome.pdf', width=8, height=6)
 ## Context specific
 
 ```{r fig.width=12, fig.height=12}
-d <- dat$cov_min %>% filter(name != 'w10k_s1k') %>% droplevels
-p <- ggplot(d, aes(x=np * 100, y=per * 100, color=study)) +
+d <- dat$cov_min %>% filter(!(name %in% opts$global)) %>% droplevels
+p <- ggplot(d, aes(x=n, y=per * 100, color=study)) +
   geom_line(lwd=0.8) +
   scale_color_manual(values=opts$colors) +
   guides(color=guide_legend(title='Study')) +
   facet_wrap(~name, ncol=3) +
-  xlab('Minimum percentage of cells') +
-  ylab('Percentage sites covered') +
+  xlab('Minimum number of cells') +
+  ylab('Percentage of sites covered') +
   theme_pub() +
   theme(
     axis.title.x=element_text(vjust=-0.8),
