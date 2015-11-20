@@ -211,34 +211,42 @@ ggplot(d, aes(x=r.x, y=r.y, color=keep)) +
 p <- ggplot(cmp$s, aes(x=name, y=mse_mean)) +
   geom_bar(aes(fill=keep), stat='identity', position='dodge') +
   xlab('') + ylab('RMSE from all cells') +
-  guides(fill=guide_legend(title='Fraction of cels')) +
+  guides(fill=guide_legend(title='Fraction of cells')) +
   coord_flip() +
   theme_pub()
 print(p)
 ```
 
 ```{r eval=F}
-ggsave(p, file='fig_rmse.pdf', width=8, height=7)
+ggsave(p, file='fig_rmse.pdf', width=8, height=9)
 ```
 
 ```{r fig.width=8, fig.height=7}
 p <- ggplot(cmp$s, aes(x=name, y=dsig)) +
   geom_bar(aes(fill=keep), stat='identity', position='dodge') +
-  xlab('') + ylab('Loss # significant correlations') +
-  guides(fill=guide_legend(title='Fraction of cels')) +
+  xlab('') + ylab('Absolute loss # significant correlations') +
+  guides(fill=guide_legend(title='Fraction of cells')) +
   coord_flip() +
   theme_pub()
 print(p)
+```
+
+```{r eval=F}
+ggsave(p, file='fig_loss_abs.pdf', width=8, height=9)
 ```
 
 ```{r fig.width=8, fig.height=7}
 p <- ggplot(cmp$s, aes(x=name, y=psig)) +
   geom_bar(aes(fill=keep), stat='identity', position='dodge') +
   xlab('') + ylab('Relative loss # significant correlations') +
-  guides(fill=guide_legend(title='Fraction of cels')) +
+  guides(fill=guide_legend(title='Fraction of cells')) +
   coord_flip() +
   theme_pub()
 print(p)
+```
+
+```{r eval=F}
+ggsave(p, file='fig_loss_rel.pdf', width=8, height=9)
 ```
 
 ```{r results='asis'}
