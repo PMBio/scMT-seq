@@ -251,6 +251,10 @@ print(p)
 ```
 
 ```{r eval=F}
+write.csv(cmp$rs, 'S12.csv')
+```
+
+```{r eval=F}
 ggsave(p, file='fig_gene_r.pdf', width=8, height=9)
 ```
 
@@ -329,7 +333,7 @@ s <- d %>% group_by(name) %>% summarise(
 write.table(s, file='fig_volcano.txt', sep='\t')
 ```
 
-```{r fig.width=10, fig.height=16, eval=F}
+```{r}
 d <- cmp$rs %>% filter(name != 'IAP')
 d <- d %>% mutate(
   name=factor(name, levels=rev(levels(name))),
@@ -341,7 +345,13 @@ d[is.na(d$topn), 'topn'] <- F
 ds <- d %>% group_by(name) %>% summarise(r=mean(r, na.rm=T)) %>% ungroup %>%
   arrange(abs(r)) %>% mutate(name=factor(name, levels=name))
 # d <- d %>% mutate(name=factor(name, rev(levels(ds$name))))
+```
 
+```{r eval=F}
+write.csv(d, 'fig2a.csv')
+```
+
+```{r fig.width=10, fig.height=16, eval=F}
 p <- ggplot(d, aes(x=r, y=-log10(p_adj), size=-log10(p_adj))) +
   geom_vline(xintercept=0, linetype='dashed', color='darkgrey') +
   geom_vline(data=ds, aes(xintercept=r), color='orange') +
@@ -592,4 +602,35 @@ h <- cmp$r %>%
   arrange(as.vector(name), desc(abs(r)))
 
 write.table(h, file='tab_r.csv', sep='\t', row.names=F, quote=F)
+```
+
+```{r}
+opts_chunck$set(eval=F)
+```
+
+```{r}
+# The sites are 2 H3K4me1 sites:
+# Chr12:86440322-86442847
+# Chr8:72326486-72339486
+plot_sites2 <- function(d) {
+  p <- ggplot(d, aes(x=met, y=expr)) +
+    stat_smooth(method=lm, color='brown2', aes(weight=weight)) +
+    geom_point(aes(color=sample, size=weight), alpha=0.7) +
+    guides(color=F, size=F) + theme_pub() +
+    facet_wrap(~gene_id) +
+    xlab('Methylation rate') + ylab('Expression log10(TPM + 1)')
+  return (p)
+}
+```
+
+```{r}
+d <- dat$em %>% filter(name == 'H3K4me1', chromo.y == '12', start.y >= 86440322, end.y <= 86442847)
+p <- plot_sites2(d)
+ggsave(p, file='chr12_86440322-86442847.pdf', width=6, height=6)
+```
+
+```{r}
+d <- dat$em %>% filter(name == 'H3K4me1', chromo.y == '8', start.y >= 72326486, end.y <= 72339486, gene_id == 'Klf2')
+p <- plot_sites2(d)
+ggsave(p, file='chr8_72326486-72339486.pdf', width=6, height=6)
 ```

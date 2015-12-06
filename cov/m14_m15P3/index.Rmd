@@ -47,10 +47,17 @@ dat$cov_min <- d
 
 ## Genome-wide
 
-```{r fig.width=8, fig.height=6}
+```{r}
 d <- dat$cov_min %>% filter(name %in% opts$global) %>%
   mutate(name=factor(name, levels=opts$global,
   labels=names(opts$global))) %>% droplevels
+```
+
+```{r eval=F}
+write.csv(d, 'S4.csv')
+```
+
+```{r fig.width=8, fig.height=6}
 p <- ggplot(d, aes(x=n, y=per * 100, color=study)) +
   geom_line(aes(linetype=name), lwd=0.8) +
   scale_color_manual(values=opts$colors) +
@@ -72,8 +79,15 @@ ggsave(p, file='fig_genome.pdf', width=8, height=6)
 
 ## Context specific
 
-```{r fig.width=12, fig.height=12}
+```{r}
 d <- dat$cov_min %>% filter(!(name %in% opts$global)) %>% droplevels
+```
+
+```{r eval=F}
+write.csv(d, 'S5.csv')
+```
+
+```{r fig.width=12, fig.height=12}
 p <- ggplot(d, aes(x=n, y=per * 100, color=study)) +
   geom_line(lwd=0.8) +
   scale_color_manual(values=opts$colors) +

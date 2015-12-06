@@ -333,6 +333,12 @@ cmp <- list()
 cmp$pca <- pca(impute(d), scale=F)
 ```
 
+```{r eval=F}
+d <- cmp$pca$vec[,1:2]
+colnames(d) <- c('pc1', 'pc2')
+write.csv(d, 'fig1c.csv')
+```
+
 ```{r fig.width=10, fig.height=9}
 p1 <- plot_pca_vec(cmp$pca$vec)
 p1
@@ -503,6 +509,14 @@ plot_hclust2 <- function(d) {
 plot_hclust2(cmp$hclust)
 ```
 
+```{r}
+d <- dist(t(cmp$hclust))
+```
+
+```{r eval=F}
+write.csv(as.matrix(d), 'S6.csv')
+```
+
 ```{r fig.width=12, fig.height=12}
-plot_dist(dist(t(cmp$hclust)))
+plot_dist(d)
 ```

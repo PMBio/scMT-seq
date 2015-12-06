@@ -41,6 +41,10 @@ d <- d %>% filter(set %in% opts$use) %>%
 dat <- d
 ```
 
+```{r}
+write.csv(dat, 'fig1b.csv')
+```
+
 ```{r fig.width=7, fig.height=6}
 p <- ggplot(dat, aes(x=unique_mapped, y=per_cpg, color=set)) +
   geom_point() +

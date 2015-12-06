@@ -177,6 +177,10 @@ print(p)
 ```
 
 ```{r eval=F}
+write.csv(d, 'fig2c.csv')
+```
+
+```{r eval=F}
 ggsave(p, file='fig_sample.pdf', width=8, height=8)
 ```
 
@@ -226,6 +230,10 @@ print(p)
 ggsave('fig_r_cov.pdf', p, width=10, height=13)
 ```
 
+```{r eval=F}
+write.csv(d, 'S16.csv')
+```
+
 ## R versus mean methylation
 
 
@@ -243,4 +251,8 @@ print(p)
 
 ```{r eval=F}
 ggsave('fig_r_mean.pdf', p, width=10, height=13)
+```
+
+```{r eval=F}
+write.csv(d, 'S15.csv')
 ```

@@ -120,3 +120,7 @@ print(p)
 ```{r}
 ggsave(p, file='fig_bulk.pdf', width=8, height=8)
 ```
+
+```{r eval=F}
+write.csv(p$data, 'S7.csv')
+```

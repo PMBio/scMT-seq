@@ -85,6 +85,12 @@ col_names <- function(d, heat) {
 dclust <- data_clust(data_select(opts$n, opts$select_by))
 ```
 
+```{r eval=F}
+write.csv(dclust$e, 'fig1e_expr.csv')
+write.csv(dclust$m, 'fig1e_met.csv')
+write.csv(dclust$r, 'fig1e_cor.csv')
+```
+
 ```{r fig.width=10, fig.height=10}
 pm <- plot_heat_met(dclust)
 ```

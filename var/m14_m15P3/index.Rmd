@@ -16,6 +16,7 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(grid)
+source('../../lib/utils.R')
 ```
 
 ```{r}
@@ -46,10 +47,22 @@ dat$var <- dat$var %>% group_by(data, name) %>%
 
 ## Weighted variance
 
+```{r eval=F}
 
-```{r fig.width=8, fig.height=8}
+```
+
+
+```{r}
 d <- dat$var %>% filter(name %in% opts$annos) %>%
   mutate(name=factor(name, levels=rev(opts$annos)))
+```
+
+```{r eval=F}
+h <- d %>% select(data, name, id_, var=wtd_var)
+write.csv(h, 'fig1d.csv')
+```
+
+```{r fig.width=8, fig.height=8}
 p <- ggplot(d, aes(x=name, fill=data, y=wtd_var)) + geom_boxplot() +
   scale_fill_manual(values=opts$colors) +
   xlab('') + ylab('\nVariance') + coord_flip() +

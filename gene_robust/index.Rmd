@@ -252,3 +252,7 @@ ggsave(p, file='fig_loss_rel.pdf', width=8, height=9)
 ```{r results='asis'}
 xtable(cmp$s, digits=2)
 ```
+
+```{r eval=F}
+write.csv(cmp$s, 'S11.csv')
+```

@@ -94,15 +94,29 @@ viz$m <- plot_met(viz$d$em, pa=viz$a)
 grid.arrange(viz$v, viz$r, viz$m, nrow=3, heights=c(0.25, 0.25, 0.5))
 ```
 
+```{r eval=F}
+write.csv(viz$v$data, 'fig2b_var.csv')
+write.csv(viz$r$data, 'fig2b_cor.csv')
+write.csv(viz$m$data, 'fig2b_cpg.csv')
+```
+
 ```{r results='asis'}
 xtable(viz$sel, digits=4)
 ```
 
 ```{r scatter, fig.width=6, fig.height=6}
+ps <- list()
 for (i in 1:nrow(viz$sel)) {
   v <- viz$sel[i,]
-  print(plot_scatter(as.character(v$name), v$id_.x, v$id_.y))
+  p <- plot_scatter(as.character(v$name), v$id_.x, v$id_.y)
+  ps[[length(ps) + 1]] <- p
+  print(p)
 }
+```
+
+```{r eval=F}
+write.csv(ps[[1]]$data, 'fig2b_p300.csv')
+write.csv(ps[[2]]$data, 'fig2b_LMR.csv')
 ```
 
 

@@ -163,6 +163,11 @@ grid.arrange(plot_pca_vec(pe$vec), plot_pca_vec(pm$vec), ncol=2)
 grid.arrange(plot_pca_val(pe$val), plot_pca_val(pm$val), ncol=2)
 ```
 
+```{r eval=F}
+write.csv(pe$vec, 'S8a.csv')
+write.csv(pm$vec, 'S8b.csv')
+```
+
 ## Principle components
 
 ```{r fig.width=10, fig.height=7}
@@ -212,6 +217,10 @@ print(p)
 
 ```{r eval=F}
 ggsave('cor_pc_scatter.pdf', p, width=10, height=10)
+```
+
+```{r eval=F}
+write.csv(p$data, 'S9.csv')
 ```
 
 ```{r}

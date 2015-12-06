@@ -118,3 +118,10 @@ pdf(file='fig_heat2_tracks.pdf', width=1.5, height=10)
 plot_tracks(data_track(dclust, pm))
 dev.off()
 ```
+
+```{r eval=F}
+write.csv(dclust$m, 'S10_met.csv')
+write.csv(dclust$e, 'S10_expr.csv')
+write.csv(dclust$r, 'S10_cor.csv')
+```
+
