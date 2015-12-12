@@ -348,11 +348,16 @@ ds <- d %>% group_by(name) %>% summarise(r=mean(r, na.rm=T)) %>% ungroup %>%
 ```
 
 ```{r eval=F}
-write.csv(d, 'fig2a.csv')
+eps <- 0.6
+h1 <- d %>% filter(p_adj < eps)
+h2 <- d %>% filter(p_adj >= eps) %>% group_by(name) %>% sample_frac(0.3) %>%
+  ungroup
+h <- rbind.data.frame(h1, h2)
+write.csv(h, 'fig2a.csv')
 ```
 
 ```{r fig.width=10, fig.height=16, eval=F}
-p <- ggplot(d, aes(x=r, y=-log10(p_adj), size=-log10(p_adj))) +
+p <- ggplot(h, aes(x=r, y=-log10(p_adj), size=-log10(p_adj))) +
   geom_vline(xintercept=0, linetype='dashed', color='darkgrey') +
   geom_vline(data=ds, aes(xintercept=r), color='orange') +
   geom_hline(yintercept=-log10(opts$alpha), color='blue') +
@@ -605,7 +610,7 @@ write.table(h, file='tab_r.csv', sep='\t', row.names=F, quote=F)
 ```
 
 ```{r}
-opts_chunck$set(eval=F)
+opts_chunk$set(eval=F)
 ```
 
 ```{r}

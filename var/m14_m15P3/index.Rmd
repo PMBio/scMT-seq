@@ -58,7 +58,8 @@ d <- dat$var %>% filter(name %in% opts$annos) %>%
 ```
 
 ```{r eval=F}
-h <- d %>% select(data, name, id_, var=wtd_var)
+h <- d %>% select(data, name, id_) %>%
+  group_by(data, name) %>% sample_frac(0.3) %>% ungroup
 write.csv(h, 'fig1d.csv')
 ```
 

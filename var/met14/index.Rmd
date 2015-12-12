@@ -63,7 +63,7 @@ stats <- function(d) {
     )
   return (s)
 }
-  
+
 cmp <- list()
 cmp$var <- dat$met %>% group_by(name, id_) %>% stats
 d <- dat$met %>% group_by(id_) %>% stats
