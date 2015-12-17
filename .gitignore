@@ -27,6 +27,7 @@ index_*
 *.png
 *.pptx
 *.ipynb
+*.jpg
 
 data/
 /zoom/w3*/

@@ -130,6 +130,20 @@ grid.arrange(viz$v, viz$r, viz$m, nrow=3, heights=c(0.25, 0.25, 0.5))
 dev.off()
 ```
 
+```{r eval=F}
+ggsave(viz$m, file='met_annos.jpg', width=18, height=6, dpi=600)
+
+h <- list()
+h$v <- plot_var(viz$d$v, xlab=T)
+h$r <- plot_cor(viz$d$r, xlab=T)
+h$m <- plot_met(viz$d$em)
+h$m
+ggsave(h$m, file='met.jpg', width=18, height=6, dpi=600)
+# grid.arrange(h$v, h$r, h$m, nrow=3, heights=c(0.25, 0.25, 0.5))
+```
+
+
+
 ```{r}
 s <- viz$sel %>% select(ens_id, gene_id, name, chromo, start=start.y, end=end.y, r, p_value=p_adj)
 write.table(s, file='fig_esrrb.csv', sep='\t')
