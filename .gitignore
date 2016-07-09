@@ -29,7 +29,6 @@ index_*
 *.ipynb
 *.jpg
 
-data/
 /zoom/w3*/
 rdata
 fig_*

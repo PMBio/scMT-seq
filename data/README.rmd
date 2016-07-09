@@ -1,0 +1,52 @@
+---
+title: "Preprocessed data of scM&T"
+author: "Christof Angermueller"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: no
+---
+
+<style>
+img {
+    max-width: none;
+}
+</style>
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=T, warning=F, message=F)
+```
+
+```{r, include=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+```
+
+```{r}
+scMT <- readRDS('data.rds')
+cols <- c('name', 'id_.x', 'id_.y', 'sample', 'met', 'weight', 'expr',
+  'chromo.x', 'start.x', 'end.x', 'chromo.y', 'start.y', 'end.y', 'strand',
+  'ens_id', 'gene_id')
+scMT <- scMT[, c(cols)]
+glimpse(scMT)
+```
+
+* `name`: Name of annotation.
+* `id_.x`: Identifier of methylated region.
+* `id_.y`: Identifier of gene matched to methylated region.
+* `sample`: Cell identifier.
+* `met`: Methylation rate of methylated region.
+* `weight`: Weight of methylated region proportional to the number of covered
+  CpG sites in that region.
+* `expr: Expression rate of gene.
+* `ens_id`: ENSEMBL gene identifier.
+* `gene_id`: Gene name.
+* `chromo.x`: Chromosome of methylated region.
+* `start.x`: Start position of methylated region.
+* `end.x`: End position of methylated region.
+* `chromo.y`: Chromosome of gene.
+* `start.y`: Start position of gene.
+* `end.y`: End position of gene.
+
