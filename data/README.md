@@ -1,21 +1,5 @@
----
-title: "Preprocessed data of scM&T"
-author: "Christof Angermueller"
-date: "2016-07-08"
-output:
-  html_document:
-    toc: no
----
-
-<style>
-img {
-    max-width: none;
-}
-</style>
-
-
-
-
+Preprocessed data of scM&T
+==========================
 
 
 ```r
