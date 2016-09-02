@@ -34,7 +34,19 @@ log_counts <- function(x) {
   return (log10(x + 1))
 }
 
-# weighted correlation
+
+# Tests for (weighted) association between two random variables.
+
+# For weighted Pearson's correlation calls wtd.cor(). For weighted Spearman's
+# correlation, calls cor.test() with weighted ranks. For unweighted correction,
+# calls cor.test().
+
+# Arguments:
+#   x, y: variables to be tested.
+#   weights: optional sample weights.
+#   method: a character string indicating which correlation coefficient is to be
+#           used for the test. Either 'pearson' or 'spearman'.
+#   alternative: alternative hypothesis. Either 'one.sided' or 'two.sided'.
 wtd_cor <- function(x, y, weights=NULL, method='pearson',
   alternative='two.sided', n_min=3) {
   r <- data.frame(r=NA, r_lo=NA, r_up=NA, p=NA, n=NA, n_wtd=NA)
@@ -70,11 +82,11 @@ wtd_cor <- function(x, y, weights=NULL, method='pearson',
         r$r_up <- ct$conf.int[2]
       }
     } else {
-      # TODO: replace 1.8
       r$r <- ct_wtd[1]
       r$p <- ct_wtd[4]
-      r$r_lo <- max(-1, ct_wtd[1] - 1.8 * ct_wtd[2])
-      r$r_up <- min(1, ct_wtd[1] + 1.8 * ct_wtd[2])
+      # Computes bounded 95% confidence interval
+      r$r_lo <- max(-1, ct_wtd[1] - 1.96 * ct_wtd[2])
+      r$r_up <- min(1, ct_wtd[1] + 1.96 * ct_wtd[2])
     }
   }
   return (r)
@@ -88,7 +100,7 @@ impute <- function(d) {
   }
   for (i in 1:length(means)) {
     d[is.na(d[,i]), i] <- means[i]
-  }
+
   return (d)
 }
 
