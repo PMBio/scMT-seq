@@ -1,0 +1,40 @@
+---
+title: Join methlation data
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F)
+```
+
+```{r, include=F}
+library(dplyr)
+```
+
+```{r}
+opts <- list()
+opts$files <- Sys.glob('../prepro/*/data_met.rds')
+```
+
+```{r join}
+d <- list()
+dm <- list()
+for (f in opts$files) {
+  name <- basename(dirname(f))
+  d[[name]] <- readRDS(f)
+  d[[name]]$name <- name
+  fm <- file.path(dirname(f), 'data_meta.rds')
+  dm[[name]] <- readRDS(fm)
+  dm[[name]]$name <- name
+}
+h <- sort(names(dm))
+d <- do.call(rbind.data.frame, d) %>% mutate(name=factor(name, levels=h))
+dm <- do.call(rbind.data.frame, dm) %>% mutate(name=factor(name, levels=h))
+d <- d %>% droplevels %>% tbl_df
+dm <- dm %>% droplevels %>% tbl_df
+saveRDS(d, 'data_met.rds')
+saveRDS(dm, 'data_meta.rds')
+```

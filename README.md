@@ -1,6 +1,9 @@
 scM&T-Seq
 =========
 
+Source code of the manuscript ***Parallel single-cell sequencing links
+transcriptional and epigenetic heterogeneity*** ([Nature Methods](http://www.nature.com/nmeth/journal/v13/n3/full/nmeth.3728.html)).
+
 Abstract
 --------
 We report scM&T–seq, a method for parallel single–cell genome–wide methylome and
@@ -28,6 +31,11 @@ Content
 * `/qc/`: Quality control DNA methylation
 * `/var/`: Comparison methylation variability in context
 * `/zoom/`: Visualizing Esrrb gene
+
+`data/join/data.rds` contains the pre-processed and joined methylation and
+expression data, which were used for the correlation analysis reported in the
+manuscript. The raw data and intermediate output files can be downloaded
+from [GEO](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE74535).
 
 Contact
 -------

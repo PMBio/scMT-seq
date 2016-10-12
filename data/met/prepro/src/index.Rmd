@@ -1,0 +1,389 @@
+---
+title: Preprocessing Seqmonk methylation files
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F, warning=F, message=F, fig.width=10)
+```
+
+```{r, include=F}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(RColorBrewer)
+library(gplots)
+library(gridExtra)
+source('../../../../lib/utils.R')
+```
+
+```{r opts, echo=T}
+opts <- list()
+opts$fil$cov <- 30 # Minimum number of cells with at least one count
+opts$fil$top_var <- 0.75 # Fraction of most variable sites to be selected
+opts$fil$min_var <- 10 # Minimum variability
+opts$adjust <- F
+opts$scale_adjust <- T
+opts$samples_excl <- NULL
+opts$samples_methods <- NULL
+opts$samples_batch2 <- NULL
+```
+
+```{r}
+opts$name <- basename(getwd())
+opts$seqmonk_dirs <- c(
+  file.path('../../reports', opts$name))
+# Filename Seqmonk methylation report
+opts$rates_files <- sapply(opts$seqmonk_dirs, function(x) file.path(x, 'rates.txt'))
+# Filename Seqmonk weights report
+opts$rates_files <- c('./cgi_rates.txt')
+opts$weights_files <- c('./cgi_weights.txt')
+opts$out_base <- './data'
+opts$samples_file <- '../../../samples/samples_stats.csv'
+opts$samples_select_file <- '../../../samples/samples.csv'
+opts$cache <- F
+opts$plot_heat <- F
+```
+
+**Name**: `r opts$name`
+
+
+
+```{r read_src}
+read_meta <- function(filename) {
+  h <- read.table(pipe(paste('cut -f 2-5,7,8,12', filename)), head=T, sep='\t')
+  names(h) <- tolower(names(h))
+  h <- h %>% rename(chromo=chromosome)
+  h <- h %>% tbl_df
+  return (h)
+}
+
+read_meta_quick <- function(filename) {
+  h <- read.table(pipe(paste('cut -f 3', filename)), head=T, sep='\t')
+  names(h) <- tolower(names(h))
+  h <- h %>% tbl_df
+  return (h)
+}
+
+read_all_meta <- function(filenames) {
+  m <- read_meta(filenames[1])
+  if (length(filenames) > 1) {
+    for (i in 2:length(filenames)) {
+      s <- read_meta_quick(filenames[i])
+      stopifnot(all(m$start == s$start))
+    }
+  }
+  return (m)
+}
+
+read_values <- function(filename, samples=NULL) {
+  h <- read.table(pipe(paste('cut -f 13-', filename)), head=T, sep='\t')
+  if (!is.null(samples)) {
+    h <- subset(h, select=intersect(colnames(h), samples))
+  }
+  h <- h %>% tbl_df
+  return (h)
+}
+
+read_all_values <- function(filenames, samples=NULL) {
+  d <- lapply(filenames, function(x) read_values(x, samples=samples))
+  e <- list()
+  for (dd in d) {
+    if (ncol(dd) > 0) {
+      e[[length(e) + 1]] <- dd
+    }
+  }
+  d <- e
+  stopifnot(length(d) > 0)
+  h <- d[[1]]
+  if (length(d) > 1) {
+    for (i in 2:length(d)) {
+      if (ncol(d[[i]]) > 0) {
+        h <- cbind.data.frame(h, d[[i]])
+      }
+    }
+  }
+  h <- h %>% tbl_df
+  return (h)
+}
+
+read_samples <- function(filename) {
+  h <- read.table(filename, sep='\t', head=T) %>% tbl_df
+  h$sample <- h$id
+  return (h)
+}
+
+read_samples_select <- function(filename) {
+  h <- read.table(filename, sep='\t', head=F) %>% tbl_df
+  colnames(h) <- c('id')
+  h <- as.vector(h$id)
+  return (h)
+}
+
+filter_samples <- function(d, excl=NULL, methods=NULL, batch2=NULL,
+  sel=NULL) {
+  f <- excl
+  if (!is.null(f)) {
+    d <- d %>% filter(!(sample %in% f))
+  }
+  f <- methods
+  if (!is.null(f) && 'method' %in% colnames(d)) {
+    d <- d %>% filter(method %in% f)
+  }
+  f <- batch2
+  if (!is.null(f) && 'batch2' %in% colnames(d)) {
+    d <- d %>% filter(batch2 %in% f)
+  }
+  if (!is.null(sel)) {
+    d <- d %>% filter(sample %in% sel)
+  }
+  d <- droplevels(d)
+
+  return (d)
+}
+```
+
+```{r}
+dat <- list()
+dat$samples <- read_samples(opts$samples_file)
+dat$samples_select <- read_samples_select(opts$samples_select_file)
+dat$samples <- filter_samples(dat$samples,
+  excl=opts$samples_excl,
+  methods=opts$samples_methods,
+  batch2=opts$samples_batch2,
+  sel=dat$samples_select)
+
+dat$meta <- read_all_meta(opts$rates_files)
+dat$rates <- read_all_values(opts$rates_file, levels(dat$samples$sample))
+dat$weights <- read_all_values(opts$weights_file, levels(dat$samples$sample))
+
+stopifnot(all(range(dat$rates, na.rm=T) == c(0, 100)))
+stopifnot(all(round(dat$weights) == dat$weights))
+stopifnot(nrow(dat$meta) == nrow(dat$rates))
+stopifnot(nrow(dat$rates) == nrow(dat$weights))
+```
+
+
+
+## Preprocessing
+
+```{r}
+get_cov <- function(d, perc=TRUE) {
+  cov <- rowSums(!is.na(d))
+  if (perc) {
+    cov <- cov / ncol(d)
+  }
+  return (cov)
+}
+
+get_var <- function(d) {
+  return (apply(d, 1, var, na.rm=T))
+}
+```
+
+```{r}
+h <- duplicated(dat$meta)
+print(sprintf('Remove %d duplicated records.', sum(h)))
+dat$meta <- dat$meta[!h, ]
+dat$meta$id_ <- 1:nrow(dat$meta)
+for (n in c('rates', 'weights')) {
+  dat[[n]] <- dat[[n]][!h,]
+  dat[[n]]$id_ <- dat$meta$id_
+}
+stopifnot(nrow(dat$meta) == nrow(dat$rates))
+stopifnot(nrow(dat$rates) == nrow(dat$weights))
+```
+
+```{r filter_cov}
+d <- dat$rates
+print(sprintf('%d records in total.', nrow(d)))
+if (!is.na(opts$fil$cov)) {
+  d <- d[get_cov(select(d, -id_), opts$fil$cov <= 1) >= opts$fil$cov,]
+}
+print(sprintf('%d records passed coverage filter.', nrow(d)))
+dat$rates <- d
+```
+
+```{r}
+plot_pca_vec <- function(pc_vec, x=1, y=2, color='cov') {
+  t <- data.frame(sample=factor(rownames(pc_vec)),
+    pcx=pc_vec[,x], pcy=pc_vec[,y])
+  t <- t %>% left_join(dat$samples, by='sample')
+  t$sample_short <- sub('^CSCP3_SERUM', '', t$sample)
+  p <- ggplot(t, aes(x=pcx, y=pcy)) + geom_point(aes_string(color=color)) +
+    geom_text(aes(label=sample_short), vjust=-.4, hjust= .3, size=2.5) +
+    xlab(sprintf('pc%d', x)) + ylab(sprintf('pc%d', y)) +
+    theme(legend.position='bottom')
+  return (p)
+}
+
+plot_pca_val <- function(pc_val) {
+  t <- data.frame(pc=1:length(pc_val), val=pc_val)
+  p <- ggplot(t, aes(x=pc, y=val)) +
+    geom_bar(stat='identity', fill='salmon', color='black') +
+    xlab('principle component') +
+    ylab('% variance explained')
+  return (p)
+}
+```
+
+
+## PCA unadjusted data
+
+```{r}
+pc <- dat$rates %>% select(-id_) %>% impute %>% pca
+```
+
+```{r fig.width=8, fig.height=7}
+p1 <- plot_pca_vec(pc$vec)
+p1 + theme(legend.position='top')
+```
+
+```{r fig.width=10, fig.height=5}
+p2 <- plot_pca_val(pc$val)
+p2
+```
+
+```{r}
+d <- dat$rates %>% select(-id_)
+cov <- rowSums(!is.na(d)) / ncol(d)
+d[h == ncol(d)]
+```
+
+```{r adjust, eval=opts$adjust}
+scale_rates <- function(d) {
+  h <- d %>% select(-id_)
+  a <- min(h, na.rm=T)
+  b <- max(h, na.rm=T)
+  h <- (h - a) / (b - a) * 100
+  h$id_ <- d$id_
+  return (h)
+}
+
+adjust_batch_met <- function(d, what='batch2', scale=F) {
+  is_na <- is.na(d)
+  h <- d %>% select(-id_) %>% impute %>% mutate(id_=d$id_)
+  h <- h %>% gather(sample, y, -id_) %>%
+    inner_join(select_(dat$samples, 'sample', x=what), by='sample')
+  h <- h %>% group_by(id_) %>% do(adjust_df(.)) %>% ungroup
+  h <- h %>% select(id_, sample, y=yr)
+  h <- h %>% spread(sample, y)
+  stopifnot(all(dim(is_na) == dim(h)))
+  stopifnot(all(colnames(is_na) %in% colnames(h)))
+  h <- h[,colnames(is_na)]
+  h[is_na] <- NA
+  return (h)
+}
+
+h <- dat$rates %>% adjust_batch_met
+if (opts$scale_adjust) {
+  h <- scale_rates(h)
+}
+dat$rates <- h
+```
+
+## PCA adjusted data
+
+```{r}
+pc <- dat$rates %>% select(-id_) %>% impute %>% pca
+```
+
+```{r fig.width=8, fig.height=7}
+p1 <- plot_pca_vec(pc$vec)
+p1 + theme(legend.position='top')
+```
+
+```{r fig.width=10, fig.height=5}
+p2 <- plot_pca_val(pc$val)
+p2
+```
+
+## Filtering
+
+```{r filter_var}
+d <- dat$rates
+h <- get_var(select(d, -id_)) # remove sites covered by < 2 samples
+d <- d[!is.na(h),]
+if (!is.na(opts$fil$min_var)) {
+  stopifnot(sum(is.na(h)) == 0)
+  d <- d[h >= opts$fil$min_var,]
+}
+print(sprintf('%d records passed min var filter.', nrow(d)))
+
+if (!is.na(opts$fil$top_var)) {
+  t <- opts$fil$top_var
+  if (t <= 1) {
+    t <- as.integer(t * nrow(d))
+  }
+  d <- d[order(get_var(select(d, -id_)), decreasing=T),]
+  d <- d[1:t,]
+}
+print(sprintf('%d final record.', nrow(d)))
+dat$rates <- d
+stopifnot(all(dat$rates$id_ %in% dat$meta$id_))
+```
+
+```{r join}
+d <- dat$meta %>% select(chromo, start, end, id_) %>%
+  inner_join(dat$rates, by='id_')
+stopifnot(nrow(d) == nrow(dat$rates))
+dat$df <- d %>% gather(sample, rate, -c(chromo, start, end, id_))
+
+d <- dat$weights %>% gather(sample, weight, -id_)
+h <- nrow(dat$df)
+dat$df <- dat$df %>% inner_join(d, by=c('id_', 'sample'))
+
+dat$df <- dat$df %>% rename(met=rate) %>% ungroup
+
+stopifnot(h == nrow(dat$df))
+stopifnot(nrow(dat$df) == nrow(dat$rates) * (ncol(dat$rates) - 1))
+stopifnot(all(dat$df[is.na(dat$df$met),]$weight == 0))
+```
+
+```{r}
+dat$df <- dat$df %>% ungroup %>% tbl_df
+dat$meta <- dat$meta %>% ungroup %>% tbl_df
+```
+
+```{r write}
+save_rds <- function(d, name) {
+  f <- sprintf('%s_%s.rds', opts$out_base, name)
+  saveRDS(d, f)
+}
+
+save_rds(dat$df, 'met')
+save_rds(dat$meta, 'meta')
+```
+
+
+
+```{r eval=opts$plot_heat, fig.height=12}
+plot_heat <- function(d, Rowv=T, xlab='value') {
+  colors <- rev(brewer.pal(9, 'Spectral'))
+  colors <- colorRampPalette(colors)(50)
+
+  labRow <- NA
+  if (nrow(d) > 500) {
+    dendro='column'
+  } else {
+    dendro = 'both'
+  }
+  p <- heatmap.2(d, density.info='none', trace='none', col=colors,
+    Rowv=Rowv, Colv=T, keysize=1.0, dendro=dendro, labRow=NA,
+    lwid=c(2, 5), key.title='', srtCol=45, key.xlab=xlab)
+  return (p)
+}
+
+d <- dat$rates
+max_rows <- 1000
+if (nrow(d) > max_rows) {
+  d <- d %>% sample_n(max_rows)
+}
+d <- d %>% select(-id_) %>% as.matrix
+if (nrow(d) > 100) {
+  h <- plot_heat(d)
+}
+```

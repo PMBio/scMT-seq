@@ -1,0 +1,299 @@
+---
+title: Preprocessing expression data
+date: 151014
+output:
+  html_document:
+    toc: yes
+---
+
+```{r, include=F}
+library(knitr)
+opts_chunk$set(echo=F, warning=F, message=F)
+options(dplyr.width=200)
+```
+
+```{r, include=F}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(RColorBrewer)
+library(gplots)
+library(gridExtra)
+source('../../../lib/utils.R')
+```
+
+```{r}
+opts <- list()
+opts$expr_files <- c('../data_raw/counts.txt')
+opts$genes_file <- '../data_raw/genes.txt'
+opts$out_base <- './data'
+opts$samples_file <- '../../samples/samples_stats.csv'
+opts$samples_select_file <- '../../samples/samples.csv'
+opts$plot_heat <- T
+```
+
+```{r opts_fil_expr, echo=T}
+opts$fil$expr$cov <- 10 # Minimum number of cells with minimum number of counts
+opts$fil$expr$counts <- 10 # Minimum number of raw counts
+opts$fil$expr$top_var <- 7500 # Number of most variable genes to be selected
+opts$fil$expr$include <- NULL
+opts$samples_methods <- NULL
+opts$samples_batch2 <- NULL
+opts$adjust <- F
+```
+
+```{r}
+read_expr <- function(filename, log=T, gather=T) {
+  d <- read.csv(filename, head=T, sep='\t')
+  stopifnot(sum(duplicated(d$ens_id)) == 0)
+  h <- names(d) != 'ens_id'
+  if (log) {
+    d[,h] <- log_counts(d[,h])
+  }
+  d$id_ <- 1:nrow(d)
+  if (gather) {
+    d <- gather(d, sample, value, -c(id_, ens_id))
+    d <- d %>% tbl_df %>% rename(expr=value)
+  }
+  return (d)
+}
+
+read_all_expr <- function(filenames, log=T, gather=T, samples=NULL) {
+  d <- NULL
+  for (filename in filenames) {
+    h <- read_expr(filename, log=log, gather=F) %>% select(-id_)
+    if (!is.null(samples)) {
+      h <- subset(h, select=intersect(colnames(h), c('ens_id', samples)))
+    }
+    if (is.null(d)) {
+      d <- h
+    } else {
+      d <- d %>% inner_join(h, by='ens_id')
+    }
+  }
+  d$id_ <- 1:nrow(d)
+
+  if (gather) {
+    d <- gather(d, sample, value, -c(id_, ens_id))
+    d <- d %>% rename(expr=value)
+  }
+  d <- d %>% mutate(ens_id=factor(ens_id)) %>% tbl_df
+  return (d)
+}
+
+read_samples <- function(filename) {
+  h <- read.table(filename, sep='\t', head=T) %>% tbl_df
+  h$sample <- h$id
+  return (h)
+}
+
+read_samples_select <- function(filename) {
+  h <- read.table(filename, sep='\t', head=F) %>% tbl_df
+  colnames(h) <- c('id')
+  h <- as.vector(h$id)
+  return (h)
+}
+
+filter_expr <- function(d, cov, counts, include=NULL) {
+  lcounts <- log_counts(counts)
+  if (cov < 1) {
+    n <- length(levels(d$sample))
+    ncov <- n * cov
+  } else {
+    ncov <- cov
+  }
+  f <- d %>% group_by(id_, ens_id) %>%
+    dplyr::summarize(cov=sum(expr >= lcounts)) %>%
+    filter(cov >= ncov) %>% ungroup %>% select(ens_id) %>% unlist %>% as.vector
+  if (!is.null(include)) {
+    f <- union(f, include)
+  }
+  df <- d %>% filter(ens_id %in% f)
+  return (df)
+}
+
+filter_expr_var <- function(d, n, include=NULL) {
+  f <- d %>% group_by(id_, ens_id) %>%
+    dplyr::summarize(var=var(expr)) %>% as.data.frame %>%
+    dplyr::arrange(desc(var)) %>% head(n) %>%
+    ungroup %>% select(ens_id) %>% unlist %>% as.vector
+  if (!is.null(include)) {
+    f <- union(f, include)
+  }
+  df <- d %>% filter(ens_id %in% f)
+  return (df)
+}
+
+filter_samples <- function(d, excl=NULL, methods=NULL, batch2=NULL,
+  sel=NULL) {
+  f <- excl
+  if (!is.null(f)) {
+    d <- d %>% filter(!(sample %in% f))
+  }
+  f <- methods
+  if (!is.null(f) && 'method' %in% colnames(d)) {
+    d <- d %>% filter(method %in% f)
+  }
+  f <- batch2
+  if (!is.null(f) && 'batch2' %in% colnames(d)) {
+    d <- d %>% filter(batch2 %in% f)
+  }
+  if (!is.null(sel)) {
+    d <- d %>% filter(sample %in% sel)
+  }
+  d <- droplevels(d)
+
+  return (d)
+}
+```
+
+```{r read}
+dat <- list()
+dat$samples <- read_samples(opts$samples_file)
+dat$samples_select <- read_samples_select(opts$samples_select_file)
+dat$samples <- filter_samples(dat$samples,
+  excl=opts$samples_excl,
+  methods=opts$samples_methods,
+  sel=dat$samples_select)
+
+dat$expr <- read_all_expr(opts$expr_files, samples=levels(dat$samples$sample))
+stopifnot(length(levels(dat$expr$sample)) == length(levels(dat$samples$sample)))
+```
+
+`r nrow(dat$samples)` samples
+
+
+```{r filter}
+dat$fil$expr <- filter_expr(dat$expr, opts$fil$expr$cov, opts$fil$expr$counts, opts$fil$expr$include)
+```
+
+```{r}
+n_unique <- function(d) {
+  return (length(unique(d)))
+}
+```
+
+`r n_unique(dat$fil$expr$id_)` out of `r n_unique(dat$expr$id_)` genes
+passed expression filter.
+
+
+```{r adjust, eval=opts$adjust}
+adjust_batch_expr <- function(d, what='batch2') {
+  d <- d %>% rename(y=expr)
+  stopifnot(all(!is.na(d$y)))
+  d <- d %>% inner_join(select_(dat$samples, 'sample', x=what), by='sample')
+  h <- d %>% group_by(id_) %>% do(adjust_df(.)) %>% ungroup
+  d <- h %>% select(-c(y, x)) %>% rename(expr=yr)
+}
+
+dat$fil$expr <- adjust_batch_expr(dat$fil$expr)
+```
+
+Taking the `r opts$fil$expr$top_var` most variable genes.
+
+```{r filter_var}
+dat$fil$expr_var <- filter_expr_var(dat$fil$expr, opts$fil$expr$top_var, opts$fil$expr$include)
+```
+
+```{r}
+read_genes <- function(filename) {
+  h <- read.table(pipe(paste('cut -f 2-5,7,8', filename)), head=T, sep='\t')
+  names(h) <- tolower(names(h))
+  h <- h %>% rename(chromo=chromosome, ens_id=id, gene_id=feature)
+  return (h)
+}
+
+dat$genes <- read_genes(opts$genes_file)
+```
+
+```{r join_genes}
+dat$out <- dat$fil$expr_var %>%
+  inner_join(dat$genes, by=c('ens_id'))
+dat$out$ens_id <- factor(dat$out$ens_id)
+dat$out <- dat$out %>% arrange(ens_id)
+dat$outm <- dat$out %>% spread(sample, expr)
+dat$fil$genes <- dat$genes %>% inner_join(select(dat$outm, ens_id, id_), by='ens_id')
+dat$fil$genes$ens_id <- as.factor(dat$fil$genes$ens_id)
+stopifnot(nrow(dat$fil$genes) == nrow(dat$outm))
+```
+
+`r length(unique(dat$out$id_))` final records.
+
+```{r write}
+save_rds <- function(d, name) {
+  f <- sprintf('%s_%s.rds', opts$out_base, name)
+  saveRDS(d, f)
+}
+
+dat$out <- dat$out %>% tbl_df
+dat$fil$genes <- dat$fil$genes %>% tbl_df
+dat$genes <- dat$genes %>% tbl_df
+
+save_rds(dat$out, 'expr')
+save_rds(dat$fil$genes, 'meta')
+save_rds(dat$genes, 'meta_all')
+```
+
+
+```{r}
+plot_pca_vec <- function(pc_vec, x=1, y=2, color='cov') {
+  t <- data.frame(sample=factor(rownames(pc_vec)),
+    pcx=pc_vec[,x], pcy=pc_vec[,y])
+  t <- t %>% left_join(dat$samples, by='sample')
+  t$sample_short <- t$sample
+  t$sample_short <- sub('^CSCP3_SERUM_', '', t$sample)
+  p <- ggplot(t, aes(x=pcx, y=pcy)) + geom_point(aes_string(color=color)) +
+    geom_text(aes(label=sample_short), vjust=-.4, hjust= .3, size=2.5) +
+    xlab(sprintf('pc%d', x)) + ylab(sprintf('pc%d', y)) +
+    theme(legend.position='right')
+  return (p)
+}
+
+plot_pca_val <- function(pc_val) {
+  t <- data.frame(pc=1:length(pc_val), val=pc_val)
+  p <- ggplot(t, aes(x=pc, y=val)) +
+    geom_bar(stat='identity', fill='salmon', color='black') +
+    xlab('principle component') +
+    ylab('% variance explained')
+  return (p)
+}
+
+plot_heat <- function(d, Rowv=T, xlab='value') {
+  colors <- rev(brewer.pal(9, 'Spectral'))
+  colors <- colorRampPalette(colors)(50)
+  labRow <- NA
+  if (nrow(d) > 500) {
+    dendro='column'
+  } else {
+    dendro = 'both'
+  }
+  p <- heatmap.2(d, density.info='none', trace='none', col=colors,
+    Rowv=Rowv, Colv=T, keysize=1.0, dendro=dendro, labRow=NA,
+    lwid=c(2, 5), key.title='', srtCol=45, key.xlab=xlab)
+  return (p)
+}
+```
+
+```{r}
+d <- dat$out %>% select(id_, sample, expr) %>% spread(sample, expr) %>%
+  select(-id_)
+pc <- pca(as.matrix(d))
+```
+
+```{r fig.width=8, fig.height=7}
+p1 <- plot_pca_vec(pc$vec)
+p1 + theme(legend.position='top')
+```
+
+```{r fig.width=10, fig.height=5}
+p2 <- plot_pca_val(pc$val)
+p2
+```
+
+```{r message=F, echo=F, eval=opts$plot_heat, fig.width=10, fig.height=10}
+max_rows <- 1000
+if (nrow(d) > max_rows) {
+  d <- d %>% sample_n(max_rows)
+}
+h <- plot_heat(as.matrix(d))
+```
