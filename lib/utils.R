@@ -102,6 +102,7 @@ impute <- function(d) {
     d[is.na(d[,i]), i] <- means[i]
 
   return (d)
+  }
 }
 
 # adjust batch effect
